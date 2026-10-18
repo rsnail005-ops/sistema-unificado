@@ -182,6 +182,11 @@ export class AuthVaultService {
         };
       }
 
+      // Guardar token de sesión para peticiones autenticadas
+      try {
+        localStorage.setItem('sb-auth-token', JSON.stringify({ access_token: remoteAuth.token }));
+      } catch { /* noop */ }
+
       // Consultar el perfil y rol OFICIAL asignado en el servidor Supabase
       const url = SupabaseService.getUrl();
       const key = SupabaseService.getKey();

@@ -431,3 +431,285 @@ ipcMain.handle('update:launch', async (event, { installerPath }) => {
   }
 });
 
+/**
+ * updater:detectLatestExe
+ *   Detecta automáticamente el instalador .exe más reciente generado en dist-electron/
+ */
+ipcMain.handle('updater:detectLatestExe', async () => {
+  const candidateDirs = [
+    path.join(__dirname, '../dist-electron'),
+    path.join(process.cwd(), 'dist-electron')
+  ];
+
+  for (const dir of candidateDirs) {
+    if (fs.existsSync(dir)) {
+      try {
+        const files = fs.readdirSync(dir)
+          .filter(f => f.endsWith('.exe'))
+          .map(f => {
+            const p = path.join(dir, f);
+            const stats = fs.statSync(p);
+            return {
+              fileName: f,
+              filePath: p,
+              sizeBytes: stats.size,
+              sizeMB: (stats.size / (1024 * 1024)).toFixed(1),
+              mtime: stats.mtime
+            };
+          })
+          .sort((a, b) => {
+            // Priorizar instaladores con "Setup" en el nombre, luego por fecha más reciente
+            const aSetup = a.fileName.toLowerCase().includes('setup') ? 1 : 0;
+            const bSetup = b.fileName.toLowerCase().includes('setup') ? 1 : 0;
+            if (aSetup !== bSetup) return bSetup - aSetup;
+            return b.mtime - a.mtime;
+          });
+
+        if (files.length > 0) {
+          return { found: true, ...files[0] };
+        }
+      } catch (err) {
+        console.error('Error al detectar .exe en dist-electron:', err);
+      }
+    }
+  }
+
+  return { found: false };
+});
+
+/**
+ * updater:selectExe
+ *   Abre el explorador de Windows para que el desarrollador elija manualmente un .exe
+ */
+ipcMain.handle('updater:selectExe', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Seleccionar Instalador .exe para Publicar',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Instalador Ejecutable de Windows (*.exe)', extensions: ['exe'] }
+    ]
+  });
+
+  if (!result.canceled && result.filePaths.length > 0) {
+    const filePath = result.filePaths[0];
+    const stats = fs.statSync(filePath);
+    return {
+      found: true,
+      filePath,
+      fileName: path.basename(filePath),
+      sizeBytes: stats.size,
+      sizeMB: (stats.size / (1024 * 1024)).toFixed(1),
+      mtime: stats.mtime
+    };
+  }
+
+  return { found: false };
+});
+
+/**
+ * updater:publishToGitHub
+ *   Crea el Release en GitHub con la API REST y sube el archivo binario .exe con
+ *   seguimiento de porcentaje y progreso en tiempo real.
+ */
+ipcMain.handle('updater:publishToGitHub', async (event, params) => {
+  const https = require('https');
+  const {
+    token,
+    owner = 'rsnail005-ops',
+    repo = 'sistema-unificado',
+    tag: rawTag,
+    title,
+    notes = '',
+    filePath
+  } = params;
+
+  if (!token) return { ok: false, error: 'Token de GitHub no proporcionado.' };
+  if (!filePath || !fs.existsSync(filePath)) {
+    return { ok: false, error: `El archivo ejecutable no existe en la ruta: ${filePath}` };
+  }
+
+  const tag = rawTag.startsWith('v') ? rawTag : `v${rawTag}`;
+  const fileName = path.basename(filePath);
+  const fileStats = fs.statSync(filePath);
+  const totalBytes = fileStats.size;
+
+  const notifyProgress = (phase, percent, message, extra = {}) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('updater:uploadProgress', {
+        phase,
+        percent,
+        message,
+        totalBytes,
+        fileName,
+        ...extra
+      });
+    }
+  };
+
+  // 1. Helper para peticiones GitHub REST API
+  const githubApiRequest = (options, postData) => {
+    return new Promise((resolve, reject) => {
+      const defaultHeaders = {
+        'User-Agent': 'MovimientoPazVida-Desktop-App',
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+      };
+
+      const reqOptions = {
+        ...options,
+        headers: { ...defaultHeaders, ...(options.headers || {}) }
+      };
+
+      const req = https.request(reqOptions, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          let parsed;
+          try {
+            parsed = JSON.parse(body);
+          } catch {
+            parsed = body;
+          }
+          resolve({ status: res.statusCode, headers: res.headers, data: parsed });
+        });
+      });
+
+      req.on('error', reject);
+      if (postData) {
+        req.write(typeof postData === 'string' ? postData : JSON.stringify(postData));
+      }
+      req.end();
+    });
+  };
+
+  try {
+    notifyProgress('creating_release', 10, `Creando release ${tag} en GitHub...`);
+
+    // 2. Crear Release o buscar existente
+    let release;
+    const createRes = await githubApiRequest({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/releases`,
+      method: 'POST'
+    }, {
+      tag_name: tag,
+      target_commitish: 'main',
+      name: title || `Actualización ${tag}`,
+      body: notes,
+      draft: false,
+      prerelease: false
+    });
+
+    if (createRes.status === 201) {
+      release = createRes.data;
+    } else if (createRes.status === 422) {
+      // Ya existe el release con este tag, obtenerlo
+      const getRes = await githubApiRequest({
+        hostname: 'api.github.com',
+        path: `/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
+        method: 'GET'
+      });
+      if (getRes.status === 200) {
+        release = getRes.data;
+      } else {
+        return { ok: false, error: `Error al obtener release existente: ${JSON.stringify(getRes.data)}` };
+      }
+    } else {
+      return { ok: false, error: `Error de GitHub (${createRes.status}): ${createRes.data.message || JSON.stringify(createRes.data)}` };
+    }
+
+    if (!release || !release.id) {
+      return { ok: false, error: 'No se pudo obtener la información del release en GitHub.' };
+    }
+
+    // 3. Si ya existía un asset con el mismo nombre, eliminarlo primero para reemplazarlo limpiamente
+    if (Array.isArray(release.assets)) {
+      const existingAsset = release.assets.find(a => a.name === fileName);
+      if (existingAsset) {
+        notifyProgress('cleaning', 20, `Reemplazando binario anterior (${fileName})...`);
+        await githubApiRequest({
+          hostname: 'api.github.com',
+          path: `/repos/${owner}/${repo}/releases/assets/${existingAsset.id}`,
+          method: 'DELETE'
+        });
+      }
+    }
+
+    notifyProgress('uploading', 25, `Iniciando subida de ${fileName} (${(totalBytes / (1024 * 1024)).toFixed(1)} MB)...`);
+
+    // 4. Subir el archivo binario a uploads.github.com
+    const uploadUrlStr = release.upload_url.split('{')[0] + `?name=${encodeURIComponent(fileName)}`;
+    const urlObj = new URL(uploadUrlStr);
+
+    const uploadResult = await new Promise((resolve, reject) => {
+      const uploadReq = https.request({
+        hostname: urlObj.hostname,
+        path: urlObj.pathname + urlObj.search,
+        method: 'POST',
+        headers: {
+          'User-Agent': 'MovimientoPazVida-Desktop-App',
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': totalBytes
+        }
+      }, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            resolve({ status: res.statusCode, data });
+          } catch {
+            resolve({ status: res.statusCode, data: body });
+          }
+        });
+      });
+
+      uploadReq.on('error', (err) => {
+        reject(err);
+      });
+
+      // Stream con seguimiento de bytes
+      let uploadedBytes = 0;
+      const readStream = fs.createReadStream(filePath, { highWaterMark: 256 * 1024 });
+
+      readStream.on('data', (chunk) => {
+        uploadedBytes += chunk.length;
+        const percent = Math.min(99, Math.round(25 + ((uploadedBytes / totalBytes) * 70)));
+        notifyProgress('uploading', percent, `Subiendo ${fileName}...`, {
+          loadedBytes: uploadedBytes,
+          percentUpload: Math.round((uploadedBytes / totalBytes) * 100)
+        });
+      });
+
+      readStream.on('error', (err) => {
+        uploadReq.destroy(err);
+        reject(err);
+      });
+
+      readStream.pipe(uploadReq);
+    });
+
+    if (uploadResult.status === 201 && uploadResult.data?.browser_download_url) {
+      notifyProgress('completed', 100, '¡Archivo subido exitosamente a GitHub Releases!');
+      return {
+        ok: true,
+        downloadUrl: uploadResult.data.browser_download_url,
+        releaseId: release.id,
+        tag: release.tag_name,
+        fileName
+      };
+    } else {
+      return {
+        ok: false,
+        error: `Error al subir binario (${uploadResult.status}): ${uploadResult.data?.message || JSON.stringify(uploadResult.data)}`
+      };
+    }
+
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+

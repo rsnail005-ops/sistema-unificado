@@ -16,12 +16,18 @@ CREATE TABLE IF NOT EXISTS public.app_releases (
 -- Habilitar RLS (Row Level Security)
 ALTER TABLE public.app_releases ENABLE ROW LEVEL SECURITY;
 
--- Cualquier usuario autenticado puede leer las versiones disponibles
-CREATE POLICY "releases_select_authenticated"
-  ON public.app_releases FOR SELECT
-  USING (auth.role() = 'authenticated');
+-- Eliminar políticas restrictivas previas si existen
+DROP POLICY IF EXISTS "releases_select_authenticated" ON public.app_releases;
+DROP POLICY IF EXISTS "releases_insert_authenticated" ON public.app_releases;
+DROP POLICY IF EXISTS "releases_select_all" ON public.app_releases;
+DROP POLICY IF EXISTS "releases_insert_all" ON public.app_releases;
 
--- Cualquier usuario autenticado (desarrollador) puede insertar un release
-CREATE POLICY "releases_insert_authenticated"
+-- Permitir lectura a todos (para que la app detecte actualizaciones antes o después de login)
+CREATE POLICY "releases_select_all"
+  ON public.app_releases FOR SELECT
+  USING (true);
+
+-- Permitir inserción de releases
+CREATE POLICY "releases_insert_all"
   ON public.app_releases FOR INSERT
-  WITH CHECK (auth.role() = 'authenticated');
+  WITH CHECK (true);

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Code2, Upload, RefreshCw, CheckCircle2, AlertTriangle,
-  Clock, Globe, Shield, Wifi, Database, Loader2, ChevronDown, ChevronUp, Tag
+  Clock, Globe, Shield, Wifi, Database, Loader2, ChevronDown, ChevronUp, Tag,
+  FolderOpen, Key, HardDrive, Eye, EyeOff, Sparkles, Check
 } from 'lucide-react';
 import { UpdateService, AppRelease, APP_VERSION } from '../services/updateService';
 import { SupabaseService } from '../services/supabase';
@@ -10,6 +11,15 @@ import { UsuarioSesion } from '../types';
 
 interface DeveloperPanelProps {
   sesion: UsuarioSesion;
+}
+
+interface DetectedExe {
+  found: boolean;
+  fileName?: string;
+  filePath?: string;
+  sizeBytes?: number;
+  sizeMB?: string;
+  mtime?: string | Date;
 }
 
 const card = (children: React.ReactNode, style?: React.CSSProperties) => (
@@ -39,16 +49,36 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
   const [releases, setReleases] = useState<AppRelease[]>([]);
   const [cargandoReleases, setCargandoReleases] = useState(true);
 
+  // GitHub Token & Credenciales (cargado de localStorage)
+  const [ghToken, setGhToken] = useState(() => {
+    return localStorage.getItem('mpv_github_token') || '';
+  });
+  const [showToken, setShowToken] = useState(false);
+  const [recordarToken, setRecordarToken] = useState(true);
+
+  // Detección automática del binario .exe
+  const [detectedExe, setDetectedExe] = useState<DetectedExe>({ found: false });
+  const [buscandoExe, setBuscandoExe] = useState(false);
+
   // Formulario nuevo release
   const [form, setForm] = useState({
     version: '',
     titulo: '',
     notas: '',
-    download_url: '',
     obligatoria: true,
   });
+
+  // Progreso de subida
   const [publicando, setPublicando] = useState(false);
-  const [pubMsg, setPubMsg] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{
+    phase: 'creating_release' | 'uploading' | 'registering' | 'completed';
+    percent: number;
+    message: string;
+    loadedMB?: string;
+    totalMB?: string;
+  } | null>(null);
+
+  const [pubMsg, setPubMsg] = useState<{ tipo: 'ok' | 'err'; texto: string; rlsError?: boolean } | null>(null);
 
   // Monitor de salud
   const [health, setHealth] = useState<{
@@ -90,7 +120,6 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
       });
       const latencia = Date.now() - t0;
       if (res.ok) {
-        const config = StorageService.obtenerConfig();
         const totalLocal = StorageService.obtenerRegistros().length;
         setHealth({ supabase: 'ok', latencia, registros: totalLocal });
       } else {
@@ -101,29 +130,168 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
     }
   };
 
+  const detectarExeLocal = async () => {
+    setBuscandoExe(true);
+    try {
+      if (typeof window !== 'undefined' && (window as any).require) {
+        const { ipcRenderer } = (window as any).require('electron');
+        const res = await ipcRenderer.invoke('updater:detectLatestExe');
+        if (res && res.found) {
+          setDetectedExe(res);
+        } else {
+          setDetectedExe({ found: false });
+        }
+      }
+    } catch (err) {
+      console.warn('Error al detectar .exe:', err);
+    } finally {
+      setBuscandoExe(false);
+    }
+  };
+
+  const seleccionarExeManual = async () => {
+    try {
+      if (typeof window !== 'undefined' && (window as any).require) {
+        const { ipcRenderer } = (window as any).require('electron');
+        const res = await ipcRenderer.invoke('updater:selectExe');
+        if (res && res.found) {
+          setDetectedExe(res);
+        }
+      }
+    } catch (err) {
+      console.warn('Error al seleccionar .exe:', err);
+    }
+  };
+
   useEffect(() => {
     cargarReleases();
     verificarSalud();
+    detectarExeLocal();
+
+    // Listener de progreso emitido por el proceso principal de Electron
+    if (typeof window !== 'undefined' && (window as any).require) {
+      const { ipcRenderer } = (window as any).require('electron');
+      const handleProgress = (_event: any, data: any) => {
+        setUploadProgress(prev => ({
+          phase: data.phase,
+          percent: data.percent,
+          message: data.message,
+          loadedMB: data.loadedBytes ? (data.loadedBytes / (1024 * 1024)).toFixed(1) : prev?.loadedMB,
+          totalMB: data.totalBytes ? (data.totalBytes / (1024 * 1024)).toFixed(1) : prev?.totalMB,
+        }));
+      };
+      ipcRenderer.on('updater:uploadProgress', handleProgress);
+      return () => {
+        ipcRenderer.removeListener('updater:uploadProgress', handleProgress);
+      };
+    }
   }, []);
 
-  const publicarRelease = async () => {
-    if (!form.version || !form.titulo || !form.download_url) {
-      setPubMsg({ tipo: 'err', texto: 'Versión, Título y URL de descarga son obligatorios.' });
+  const subirYPublicar = async () => {
+    setPubMsg(null);
+
+    if (!form.version.trim()) {
+      setPubMsg({ tipo: 'err', texto: 'Debes ingresar el número de versión (ejemplo: 1.5).' });
       return;
     }
+    if (!form.titulo.trim()) {
+      setPubMsg({ tipo: 'err', texto: 'Debes ingresar un título para la actualización.' });
+      return;
+    }
+    if (!ghToken.trim()) {
+      setPubMsg({ tipo: 'err', texto: 'Ingresa tu Token de GitHub para poder subir el archivo automáticamente.' });
+      return;
+    }
+    if (!detectedExe.found || !detectedExe.filePath) {
+      setPubMsg({ tipo: 'err', texto: 'No se ha detectado ningún instalador .exe. Compila la app o elígelo con "Examinar".' });
+      return;
+    }
+
+    if (recordarToken) {
+      localStorage.setItem('mpv_github_token', ghToken.trim());
+    }
+
     setPublicando(true);
-    setPubMsg(null);
-    const res = await UpdateService.publicarRelease(
-      { ...form, publicado_por: sesion.cedula },
-      getToken()
-    );
-    setPublicando(false);
-    if (res.ok) {
-      setPubMsg({ tipo: 'ok', texto: `✓ Versión v${form.version} publicada correctamente.` });
-      setForm({ version: '', titulo: '', notas: '', download_url: '', obligatoria: true });
+    setUploadProgress({
+      phase: 'creating_release',
+      percent: 5,
+      message: 'Conectando con GitHub...',
+      totalMB: detectedExe.sizeMB
+    });
+
+    try {
+      if (typeof window === 'undefined' || !(window as any).require) {
+        throw new Error('Esta función requiere ejecutar la aplicación en su versión de escritorio compilada (.exe).');
+      }
+      const { ipcRenderer } = (window as any).require('electron');
+
+      // 1. Crear release en GitHub y subir el archivo binario
+      const ghRes = await ipcRenderer.invoke('updater:publishToGitHub', {
+        token: ghToken.trim(),
+        owner: 'rsnail005-ops',
+        repo: 'sistema-unificado',
+        tag: form.version.trim(),
+        title: form.titulo.trim(),
+        notes: form.notas.trim(),
+        filePath: detectedExe.filePath
+      });
+
+      if (!ghRes.ok || !ghRes.downloadUrl) {
+        throw new Error(ghRes.error || 'Error al subir el ejecutable a GitHub Releases.');
+      }
+
+      // 2. Registrar en Supabase
+      setUploadProgress(prev => ({
+        phase: 'registering',
+        percent: 95,
+        message: 'Registrando nueva versión en la base de datos Supabase...',
+        loadedMB: prev?.totalMB,
+        totalMB: prev?.totalMB
+      }));
+
+      const dbRes = await UpdateService.publicarRelease({
+        version: form.version.trim(),
+        titulo: form.titulo.trim(),
+        notas: form.notas.trim(),
+        download_url: ghRes.downloadUrl,
+        obligatoria: form.obligatoria,
+        publicado_por: sesion.cedula
+      }, getToken());
+
+      if (!dbRes.ok) {
+        const errText = dbRes.error || '';
+        const isRls = errText.includes('42501') || errText.includes('violates row-level security');
+        setPubMsg({
+          tipo: 'err',
+          texto: isRls
+            ? 'El ejecutable se subió a GitHub con éxito, pero Supabase bloqueó el registro por permisos de Row-Level Security (RLS).'
+            : `Error al registrar en Supabase: ${errText}`,
+          rlsError: isRls
+        });
+        setUploadProgress(null);
+        return;
+      }
+
+      // 3. Todo completado
+      setUploadProgress({
+        phase: 'completed',
+        percent: 100,
+        message: '¡Versión publicada exitosamente en GitHub y Supabase!'
+      });
+
+      setPubMsg({
+        tipo: 'ok',
+        texto: `🎉 ¡Versión v${form.version} publicada con éxito! El instalador está disponible en GitHub y todos los usuarios recibirán el aviso de actualización automáticamente.`
+      });
+
+      setForm({ version: '', titulo: '', notas: '', obligatoria: true });
       cargarReleases();
-    } else {
-      setPubMsg({ tipo: 'err', texto: res.error || 'Error al publicar.' });
+
+    } catch (err: any) {
+      setUploadProgress(null);
+      setPubMsg({ tipo: 'err', texto: err.message || 'Error inesperado durante la subida.' });
+    } finally {
+      setPublicando(false);
     }
   };
 
@@ -143,11 +311,11 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
   };
 
   return (
-    <div style={{ padding: '0 0 40px 0', maxWidth: 860 }}>
+    <div style={{ padding: '0 0 40px 0', maxWidth: 900 }}>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 16,
-        marginBottom: 32, paddingBottom: 24,
+        marginBottom: 28, paddingBottom: 22,
         borderBottom: '1px solid rgba(255,255,255,0.08)',
       }}>
         <div style={{
@@ -164,7 +332,7 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
           </h1>
           <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#64748b' }}>
             Versión instalada: <strong style={{ color: '#7c3aed' }}>v{APP_VERSION}</strong>
-            &nbsp;·&nbsp;Operador: <strong style={{ color: '#a78bfa' }}>{sesion.nombres} {sesion.apellidos}</strong>
+            &nbsp;·&nbsp;Desarrollador: <strong style={{ color: '#a78bfa' }}>{sesion.nombres} {sesion.apellidos}</strong>
           </p>
         </div>
       </div>
@@ -244,16 +412,140 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
           </>
         )}
 
-        {/* ─── Publicar nuevo release ─── */}
+        {/* ─── Publicación Automática a GitHub Releases ─── */}
         {card(
           <>
-            {sectionTitle(<Upload size={16} color="#fff" />, 'Publicar Nueva Versión')}
+            {sectionTitle(<Upload size={16} color="#fff" />, 'Publicación Automática a GitHub')}
+
+            {/* 1. Selector de Binario .exe */}
+            <div style={{
+              background: 'rgba(124,58,237,0.08)',
+              border: '1px solid rgba(124,58,237,0.25)',
+              borderRadius: 12, padding: '16px',
+              marginBottom: 18,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <HardDrive size={18} color="#a78bfa" />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>
+                    Instalador Ejecutable para Windows (.exe)
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={detectarExeLocal}
+                    disabled={buscandoExe || publicando}
+                    style={{
+                      background: 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 8, padding: '6px 12px',
+                      color: '#cbd5e1', fontSize: 12, fontWeight: 600,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                    }}
+                  >
+                    <RefreshCw size={12} className={buscandoExe ? 'animate-spin' : ''} />
+                    <span>Re-detectar</span>
+                  </button>
+                  <button
+                    onClick={seleccionarExeManual}
+                    disabled={publicando}
+                    style={{
+                      background: 'rgba(124,58,237,0.3)',
+                      border: '1px solid rgba(124,58,237,0.5)',
+                      borderRadius: 8, padding: '6px 12px',
+                      color: '#c4b5fd', fontSize: 12, fontWeight: 700,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                    }}
+                  >
+                    <FolderOpen size={13} />
+                    <span>Examinar...</span>
+                  </button>
+                </div>
+              </div>
+
+              {detectedExe.found ? (
+                <div style={{
+                  background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: '10px 14px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: '#38bdf8', wordBreak: 'break-all' }}>
+                      {detectedExe.fileName}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
+                      Tamaño: <strong style={{ color: '#f59e0b' }}>{detectedExe.sizeMB} MB</strong> · Listo para ser subido
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
+                    background: 'rgba(16,185,129,0.2)', color: '#34d399', border: '1px solid rgba(16,185,129,0.4)',
+                    display: 'flex', alignItems: 'center', gap: 4
+                  }}>
+                    <Check size={12} /> Detectado
+                  </span>
+                </div>
+              ) : (
+                <div style={{
+                  background: 'rgba(239,68,68,0.1)', border: '1px dashed rgba(239,68,68,0.3)',
+                  borderRadius: 8, padding: '12px 14px', color: '#fca5a5', fontSize: 12.5,
+                  display: 'flex', alignItems: 'center', gap: 8
+                }}>
+                  <AlertTriangle size={16} />
+                  <span>No se encontró ningún .exe en dist-electron/. Usa el botón «Examinar...» para seleccionarlo.</span>
+                </div>
+              )}
+            </div>
+
+            {/* 2. Token de GitHub */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                  <Key size={12} style={{ display: 'inline', marginRight: 4 }} />
+                  GitHub Personal Access Token (PAT)
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a3b8' }}>
+                  <input
+                    type="checkbox"
+                    id="recordarToken"
+                    checked={recordarToken}
+                    onChange={e => setRecordarToken(e.target.checked)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <label htmlFor="recordarToken" style={{ cursor: 'pointer' }}>Recordar token en este equipo</label>
+                </div>
+              </div>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showToken ? 'text' : 'password'}
+                  style={{ ...inputStyle, paddingRight: 40, fontFamily: 'monospace', fontSize: 13 }}
+                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  value={ghToken}
+                  onChange={e => setGhToken(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken(!showToken)}
+                  style={{
+                    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                    background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}
+                >
+                  {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                Destino: <strong>github.com/rsnail005-ops/sistema-unificado</strong> (Releases)
+              </div>
+            </div>
+
+            {/* 3. Formulario del Release */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
               <div>
                 <label style={labelStyle}>Número de versión *</label>
                 <input
                   style={inputStyle}
-                  placeholder="ej. 1.2.0"
+                  placeholder="ej. 1.5"
                   value={form.version}
                   onChange={e => setForm(f => ({ ...f, version: e.target.value }))}
                 />
@@ -262,7 +554,7 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
                 <label style={labelStyle}>Título del release *</label>
                 <input
                   style={inputStyle}
-                  placeholder="ej. Actualización de seguridad"
+                  placeholder="ej. Actualización del Sistema v1.5"
                   value={form.titulo}
                   onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))}
                 />
@@ -270,20 +562,10 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
             </div>
 
             <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>URL de descarga (.exe en GitHub Releases) *</label>
-              <input
-                style={inputStyle}
-                placeholder="https://github.com/org/repo/releases/download/v1.2.0/setup.exe"
-                value={form.download_url}
-                onChange={e => setForm(f => ({ ...f, download_url: e.target.value }))}
-              />
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Notas de la versión</label>
+              <label style={labelStyle}>Notas de la versión (lo que verán los usuarios)</label>
               <textarea
-                style={{ ...inputStyle, minHeight: 100, resize: 'vertical', fontFamily: 'inherit' }}
-                placeholder="• Corrección de errores&#10;• Nueva funcionalidad X&#10;• Mejoras de rendimiento"
+                style={{ ...inputStyle, minHeight: 90, resize: 'vertical', fontFamily: 'inherit' }}
+                placeholder="• Se añadió un nuevo rol&#10;• Se optimizó la sincronización&#10;• Correcciones generales"
                 value={form.notas}
                 onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
               />
@@ -309,43 +591,101 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
               </button>
               <span style={{ fontSize: 13, color: '#cbd5e1' }}>
                 Actualización <strong style={{ color: form.obligatoria ? '#f87171' : '#94a3b8' }}>
-                  {form.obligatoria ? 'OBLIGATORIA' : 'opcional'}
+                  {form.obligatoria ? 'OBLIGATORIA (bloquea la app hasta actualizar)' : 'opcional'}
                 </strong>
               </span>
             </div>
 
+            {/* Barra de progreso interactiva en vivo */}
+            {uploadProgress && (
+              <div style={{
+                background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.35)',
+                borderRadius: 12, padding: '16px', marginBottom: 18,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: '#c4b5fd' }}>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>{uploadProgress.message}</span>
+                  </div>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: '#a78bfa' }}>
+                    {uploadProgress.percent}%
+                  </span>
+                </div>
+
+                <div style={{
+                  width: '100%', height: 8, background: 'rgba(255,255,255,0.1)',
+                  borderRadius: 4, overflow: 'hidden', marginBottom: 8
+                }}>
+                  <div style={{
+                    width: `${uploadProgress.percent}%`, height: '100%',
+                    background: 'linear-gradient(90deg, #7c3aed, #38bdf8)',
+                    transition: 'width 0.2s ease-out'
+                  }} />
+                </div>
+
+                {uploadProgress.loadedMB && uploadProgress.totalMB && (
+                  <div style={{ fontSize: 11.5, color: '#94a3b8', textAlign: 'right' }}>
+                    Transferidos: <strong>{uploadProgress.loadedMB} MB</strong> de <strong>{uploadProgress.totalMB} MB</strong>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Mensajes de resultado */}
             {pubMsg && (
               <div style={{
-                display: 'flex', gap: 10, alignItems: 'flex-start',
+                display: 'flex', flexDirection: 'column', gap: 8,
                 background: pubMsg.tipo === 'ok' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
                 border: `1px solid ${pubMsg.tipo === 'ok' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                borderRadius: 10, padding: '10px 14px', marginBottom: 16,
+                borderRadius: 10, padding: '12px 16px', marginBottom: 16,
               }}>
-                {pubMsg.tipo === 'ok'
-                  ? <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0, marginTop: 2 }} />
-                  : <AlertTriangle size={16} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />}
-                <span style={{ fontSize: 13, color: pubMsg.tipo === 'ok' ? '#34d399' : '#fca5a5' }}>
-                  {pubMsg.texto}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  {pubMsg.tipo === 'ok'
+                    ? <CheckCircle2 size={18} color="#10b981" style={{ flexShrink: 0, marginTop: 2 }} />
+                    : <AlertTriangle size={18} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />}
+                  <span style={{ fontSize: 13, color: pubMsg.tipo === 'ok' ? '#34d399' : '#fca5a5', lineHeight: 1.5 }}>
+                    {pubMsg.texto}
+                  </span>
+                </div>
+
+                {pubMsg.rlsError && (
+                  <div style={{
+                    marginTop: 8, padding: '10px 12px', background: 'rgba(0,0,0,0.3)',
+                    borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)'
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 4 }}>
+                      💡 Solución (ejecuta esto en Supabase SQL Editor una sola vez):
+                    </div>
+                    <pre style={{
+                      margin: 0, fontSize: 11, color: '#cbd5e1', background: 'rgba(0,0,0,0.4)',
+                      padding: '8px', borderRadius: 6, overflowX: 'auto', userSelect: 'all'
+                    }}>
+{`DROP POLICY IF EXISTS "releases_insert_authenticated" ON public.app_releases;
+DROP POLICY IF EXISTS "releases_insert_all" ON public.app_releases;
+CREATE POLICY "releases_insert_all" ON public.app_releases FOR INSERT WITH CHECK (true);
+CREATE POLICY "releases_select_all" ON public.app_releases FOR SELECT USING (true);`}
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
 
             <button
-              onClick={publicarRelease}
+              onClick={subirYPublicar}
               disabled={publicando}
               style={{
-                padding: '12px 28px',
+                padding: '13px 30px',
                 background: publicando ? 'rgba(124,58,237,0.4)' : 'linear-gradient(135deg, #7c3aed, #4f46e5)',
                 border: 'none', borderRadius: 12, cursor: publicando ? 'not-allowed' : 'pointer',
-                color: '#fff', fontSize: 14, fontWeight: 700,
+                color: '#fff', fontSize: 14.5, fontWeight: 700,
                 display: 'flex', alignItems: 'center', gap: 8,
                 boxShadow: publicando ? 'none' : '0 8px 24px rgba(124,58,237,0.35)',
                 transition: 'all 0.2s',
               }}
             >
               {publicando
-                ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Publicando...</>
-                : <><Upload size={16} /> Publicar Release</>}
+                ? <><Loader2 size={18} className="animate-spin" /> Subiendo a GitHub...</>
+                : <><Sparkles size={18} /> Subir a GitHub y Publicar Versión</>}
             </button>
           </>
         )}
@@ -372,7 +712,7 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
 
             {cargandoReleases
               ? <div style={{ display: 'flex', gap: 10, alignItems: 'center', color: '#64748b', padding: '20px 0' }}>
-                <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                <Loader2 size={18} className="animate-spin" />
                 Cargando historial…
               </div>
               : releases.length === 0
@@ -439,7 +779,6 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
           </>
         )}
       </div>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 };
