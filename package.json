@@ -1,0 +1,71 @@
+{
+  "name": "movimiento-paz-vida-desktop",
+  "version": "1.0.0-beta",
+  "description": "Aplicación Nacional Ejecutable de Almacenamiento de Datos - Movimiento por la Paz y la Vida en Venezuela",
+  "main": "electron/main.cjs",
+  "author": "Movimiento por la Paz y la Vida",
+  "license": "Proprietary",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "electron:start": "vite build && electron electron/main.cjs",
+    "electron:dev": "electron electron/main.cjs --dev",
+    "dist": "vite build && electron-builder --linux --dir",
+    "dist:appimage": "vite build && electron-builder --linux AppImage",
+    "dist:win": "vite build && electron-builder --win",
+    "dist:demo": "vite build && electron-builder --win -c.productName=\"MovimientoPazVida-Demo-24h\" -c.directories.output=\"dist-electron-demo\"",
+    "dist:test1min": "vite build && electron-builder --win -c.productName=\"MovimientoPazVida-Prueba-1min\" -c.directories.output=\"dist-electron-test1min\""
+  },
+  "dependencies": {
+    "@supabase/server": "^0.1.0",
+    "@supabase/supabase-js": "^2.45.4",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.16.0",
+    "mammoth": "^1.8.0",
+    "nodemailer": "^10.0.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.4",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/nodemailer": "^8.0.1",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8"
+  },
+  "build": {
+    "appId": "ve.gob.pazvida.app",
+    "productName": "MovimientoPazVida",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "dir",
+        "AppImage"
+      ],
+      "category": "Office",
+      "icon": "public/icon.png"
+    },
+    "win": {
+      "target": [
+        "portable",
+        "nsis",
+        "dir"
+      ],
+      "icon": "public/icon.ico"
+    }
+  }
+}
