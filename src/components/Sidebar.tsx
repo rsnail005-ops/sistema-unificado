@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { LOGO_OFICIAL, LOGO_JUNTOS_PAZ_VIDA } from '../assets/logos';
-import { UsuarioSesion } from '../types';
+import { UsuarioSesion, isDeveloperSesion } from '../types';
 
 export type TabType = 
   | 'dashboard' 
@@ -110,13 +110,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, sesio
         <span>Eventos y Jornadas</span>
       </div>
 
-      <div
-        className={`nav-item ${activeTab === 'documentos' ? 'active' : ''}`}
-        onClick={() => setActiveTab('documentos')}
-      >
-        <FileText size={18} />
-        <span>Documentos Oficiales</span>
-      </div>
+      {/* ─── Panel Desarrollador en lugar de Documentos Oficiales — solo para desarrolladores ─── */}
+      {isDeveloperSesion(sesion) && (
+        <div
+          className={`nav-item ${activeTab === 'developer' ? 'active' : ''}`}
+          onClick={() => setActiveTab('developer')}
+          style={activeTab === 'developer' ? {
+            background: 'linear-gradient(135deg, rgba(124,58,237,0.25), rgba(79,70,229,0.15))',
+            borderLeft: '3px solid #7c3aed',
+          } : { borderLeft: '3px solid transparent' }}
+        >
+          <Code2 size={18} style={{ color: '#a78bfa' }} />
+          <span style={{ color: activeTab === 'developer' ? '#c4b5fd' : '#e2e8f0', fontWeight: 600 }}>💻 Desarrollador</span>
+          <span style={{
+            marginLeft: 'auto',
+            fontSize: '9.5px',
+            fontWeight: 800,
+            padding: '2px 6px',
+            borderRadius: '999px',
+            backgroundColor: 'rgba(124,58,237,0.3)',
+            color: '#c4b5fd',
+            border: '1px solid rgba(124,58,237,0.5)'
+          }}>
+            DEV
+          </span>
+        </div>
+      )}
 
       <div style={{ padding: '16px 8px 8px 8px', borderBottom: '1px solid var(--border-subtle)', margin: '8px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -142,29 +161,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, sesio
         <ShieldAlert size={18} />
         <span>Auditoría</span>
       </div>
-
-      {/* ─── Panel Desarrollador — solo visible para rol developer ─── */}
-      {sesion?.rol === 'developer' && (
-        <>
-          <div style={{ padding: '16px 8px 8px 8px', margin: '8px 0', borderTop: '1px solid rgba(124,58,237,0.25)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#a78bfa', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              <Code2 size={13} style={{ color: '#7c3aed' }} />
-              <span>Desarrollador</span>
-            </div>
-          </div>
-          <div
-            className={`nav-item ${activeTab === 'developer' ? 'active' : ''}`}
-            onClick={() => setActiveTab('developer')}
-            style={activeTab === 'developer' ? {
-              background: 'linear-gradient(135deg, rgba(124,58,237,0.25), rgba(79,70,229,0.15))',
-              borderLeft: '3px solid #7c3aed',
-            } : { borderLeft: '3px solid transparent' }}
-          >
-            <Code2 size={18} style={{ color: '#a78bfa' }} />
-            <span style={{ color: activeTab === 'developer' ? '#c4b5fd' : '#94a3b8' }}>💻 Panel Dev</span>
-          </div>
-        </>
-      )}
 
       <div style={{
         marginTop: 'auto',

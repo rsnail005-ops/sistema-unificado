@@ -18,7 +18,7 @@ import { DeveloperPanel } from './components/DeveloperPanel';
 import { StorageService } from './services/storage';
 import { AuthVaultService } from './services/authVault';
 import { UpdateService, AppRelease } from './services/updateService';
-import { UsuarioSesion } from './types';
+import { UsuarioSesion, isDeveloperSesion } from './types';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -122,7 +122,7 @@ export const App: React.FC = () => {
           {activeTab === 'documentos' && <DocumentosView sesion={sesion} />}
           {activeTab === 'sync' && <SyncQueueView sesion={sesion} />}
           {activeTab === 'auditoria' && <AuditView />}
-          {activeTab === 'developer' && sesion.rol === 'developer' && (
+          {activeTab === 'developer' && isDeveloperSesion(sesion) && (
             <DeveloperPanel sesion={sesion} />
           )}
         </main>
