@@ -50,7 +50,14 @@ export type MetodoPago = 'Punto de Venta' | 'Transferencia' | 'Pago Móvil' | 'E
 export type EstadoMembresia = 'Activo' | 'Próximo a Vencer' | 'Vencido';
 export type EstadoSolvencia = EstadoMembresia | 'Solvente' | 'Deuda' | 'Suspendido';
 
-export function obtenerEstadoMembresia(estado?: string, fechaVencimiento?: string): EstadoMembresia {
+export function obtenerEstadoMembresia(
+  estado?: string, 
+  fechaVencimiento?: string, 
+  esAtleta?: boolean
+): EstadoMembresia {
+  // Atletas de Alto Rendimiento están becados/exentos: siempre activos
+  if (esAtleta) return 'Activo';
+
   if (fechaVencimiento) {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
@@ -85,6 +92,9 @@ export interface PersonaDatos {
   id_gbp?: string;
   disciplina_gbp?: string;
   sector?: string;
+  base_misiones?: string;
+  es_atleta_alto_rendimiento?: boolean;
+  disciplina_atleta?: string;
   estado_solvencia?: EstadoSolvencia;
   plan_activo?: PlanPago;
   tipo_membresia?: 'Semanal' | 'Mensual' | 'Personalizada';

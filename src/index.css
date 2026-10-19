@@ -43,8 +43,36 @@ body {
   font-size: 14px;
   line-height: 1.5;
   user-select: none;
+  -webkit-user-select: none;
   overflow: hidden;
   height: 100vh;
+}
+
+/* ── Inputs SIEMPRE interactivos (fix Electron) ─────────────────────────── */
+input,
+textarea,
+select,
+[contenteditable] {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -webkit-app-region: no-drag !important;
+  cursor: text;
+  pointer-events: auto !important;
+}
+select { cursor: pointer; }
+button { -webkit-app-region: no-drag !important; pointer-events: auto !important; }
+
+/* Todos los modales / overlays no deben heredar drag ───────────────────── */
+.modal-overlay,
+.modal-content,
+.modal-body,
+.modal-footer,
+.modal-header,
+.gym-modal-backdrop,
+.gym-modal-box,
+.auth-modal-overlay,
+.settings-modal-overlay {
+  -webkit-app-region: no-drag !important;
 }
 
 /* Custom Scrollbars */
@@ -324,7 +352,7 @@ body {
   background: linear-gradient(135deg, #f59e0b, #d97706);
 }
 
-/* Form Controls */
+/* ── Form Controls ───────────────────────────────────────────────────────── */
 .form-group {
   margin-bottom: 16px;
 }
@@ -334,23 +362,145 @@ body {
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 6px;
+  user-select: none;
 }
-.form-input, .form-select, .form-textarea {
+
+/* Inputs, selects, textareas — base unificada */
+.form-input,
+.form-select,
+.form-textarea {
   width: 100%;
   padding: 10px 14px;
-  background-color: rgba(10, 15, 29, 0.7);
+  background-color: rgba(7, 11, 22, 0.85);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  color: #ffffff;
+  color: #f1f5f9;
   font-size: 13.5px;
   font-family: inherit;
-  transition: all 0.2s ease;
+  line-height: 1.5;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  /* Interactividad garantizada en Electron */
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
-.form-input:focus, .form-select:focus, .form-textarea:focus {
+.form-input::selection,
+.form-textarea::selection,
+input::selection,
+textarea::selection {
+  background: rgba(59, 130, 246, 0.45);
+  color: #ffffff;
+}
+.form-input::placeholder,
+.form-textarea::placeholder {
+  color: #475569;
+  font-size: 13px;
+}
+.form-input:hover,
+.form-select:hover,
+.form-textarea:hover {
+  border-color: #2e456e;
+  background-color: rgba(10, 15, 29, 0.9);
+}
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
   outline: none;
   border-color: var(--accent-blue-light);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.22);
+  background-color: rgba(5, 9, 20, 0.98);
+}
+.form-input:disabled,
+.form-select:disabled,
+.form-textarea:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed !important;
+  background-color: rgba(15, 23, 42, 0.5) !important;
+  border-color: rgba(30, 45, 74, 0.4) !important;
+}
+.form-input:read-only,
+input:read-only {
+  cursor: default;
+}
+.form-textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+/* Barra de búsqueda reutilizable (.search-bar) */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background-color: rgba(7, 11, 22, 0.85);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  -webkit-app-region: no-drag !important;
+}
+.search-bar svg {
+  color: #64748b;
+  flex-shrink: 0;
+  pointer-events: none;
+  transition: color 0.18s ease;
+}
+.search-bar:hover {
+  border-color: #2e456e;
   background-color: rgba(10, 15, 29, 0.95);
+}
+.search-bar:focus-within {
+  border-color: var(--accent-blue-light);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+  color: #ffffff;
+  background-color: rgba(5, 9, 20, 0.98);
+}
+.search-bar:focus-within svg {
+  color: var(--accent-blue-light);
+}
+.search-bar input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #f1f5f9;
+  font-size: 13.5px;
+  font-family: inherit;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+.search-bar input::placeholder {
+  color: #475569;
+}
+
+/* Input tipo fecha — color del picker  */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+/* Input numérico — quitar flechas */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] { -moz-appearance: textfield; }
+
+/* Checkbox / Radio accesible */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent-blue-light);
+  cursor: pointer;
+  user-select: none !important;
 }
 
 /* Tables */

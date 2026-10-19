@@ -306,7 +306,10 @@ export const BcvModal: React.FC<BcvModalProps> = ({ isOpen, onClose }) => {
                   borderRadius: '6px',
                   padding: '5px 8px',
                   color: '#ffffff',
-                  fontSize: '12px'
+                  fontSize: '12px',
+                  userSelect: 'text',
+                  WebkitUserSelect: 'text',
+                  ['WebkitAppRegion' as any]: 'no-drag'
                 }}
               />
               <button
@@ -389,7 +392,10 @@ export const BcvModal: React.FC<BcvModalProps> = ({ isOpen, onClose }) => {
                     color: '#ffffff',
                     fontSize: '13px',
                     fontWeight: 700,
-                    outline: 'none'
+                    outline: 'none',
+                    userSelect: 'text',
+                    WebkitUserSelect: 'text',
+                    ['WebkitAppRegion' as any]: 'no-drag'
                   }}
                 />
               </div>
@@ -425,7 +431,10 @@ export const BcvModal: React.FC<BcvModalProps> = ({ isOpen, onClose }) => {
                     color: '#34d399',
                     fontSize: '13px',
                     fontWeight: 700,
-                    outline: 'none'
+                    outline: 'none',
+                    userSelect: 'text',
+                    WebkitUserSelect: 'text',
+                    ['WebkitAppRegion' as any]: 'no-drag'
                   }}
                 />
               </div>

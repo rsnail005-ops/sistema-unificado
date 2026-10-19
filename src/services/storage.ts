@@ -9,7 +9,8 @@ import {
   ClaseProgramada,
   PagoRegistro,
   AsistenciaRegistro,
-  EstadoSolvencia
+  EstadoSolvencia,
+  MetodoPago
 } from '../types';
 import * as XLSX from 'xlsx';
 import { SupabaseService, SyncResult, ServerStatusInfo } from './supabase';
@@ -590,7 +591,10 @@ export class StorageService {
   }
 
   /**
-   * Descarga y fusiona en tiempo real los datos creados por otros operadores desde Supabase
+   * Descarga datos desde Supabase aplicando regla SERVER-FIRST:
+   * - El servidor siempre gana en conflictos
+   * - Registros eliminados en servidor se eliminan localmente (si ya estaban sincronizados)
+   * - Datos nuevos del servidor se agregan al localStorage
    */
   static async descargarActualizacionesDesdeServidor(): Promise<{
     nuevosRegistros: number;
@@ -607,17 +611,36 @@ export class StorageService {
     let nuevosPagos = 0;
     let nuevasAsistencias = 0;
 
-    // 1. Descargar Personas y Registros Sociales
+    // 1. Descargar Personas y Registros Sociales (SERVER-FIRST)
     const regRes = await SupabaseService.fetchRegistros();
     if (regRes.ok && regRes.data && regRes.data.length > 0) {
       const raw = localStorage.getItem(STORAGE_KEYS.REGISTROS);
       let localList: Registro[] = raw ? JSON.parse(raw) : [];
       let modificado = false;
 
+      const serverIds = new Set(regRes.data.map((r: any) => r.id));
+      const serverCedulas = new Set(
+        regRes.data
+          .filter((r: any) => r.tipo === 'persona' && r.datos?.cedula)
+          .map((r: any) => r.datos.cedula.trim().toUpperCase())
+      );
+
+      // Eliminar locales sincronizados que ya no existen en el servidor
+      const prevLen = localList.length;
+      localList = localList.filter(l => {
+        if (l.sincronizado === false) return true; // Preservar pendientes de subir
+        if (serverIds.has(l.id)) return true;
+        if (l.tipo === 'persona' && l.datos?.cedula &&
+          serverCedulas.has(l.datos.cedula.trim().toUpperCase())) return true;
+        return false;
+      });
+      if (localList.length !== prevLen) modificado = true;
+
       for (const remote of regRes.data) {
-        const idx = localList.findIndex(l => 
+        const idx = localList.findIndex(l =>
           l.id === remote.id ||
-          (l.tipo === 'persona' && remote.tipo === 'persona' && l.datos?.cedula && remote.datos?.cedula && l.datos.cedula.trim().toUpperCase() === remote.datos.cedula.trim().toUpperCase())
+          (l.tipo === 'persona' && remote.tipo === 'persona' && l.datos?.cedula && remote.datos?.cedula &&
+            l.datos.cedula.trim().toUpperCase() === remote.datos.cedula.trim().toUpperCase())
         );
 
         if (idx === -1) {
@@ -638,19 +661,21 @@ export class StorageService {
           nuevosRegistros++;
           modificado = true;
         } else {
-          const localTime = new Date(localList[idx].actualizado_en || 0).getTime();
+          const local = localList[idx];
           const remoteTime = new Date(remote.actualizado_en || 0).getTime();
-          if (remoteTime >= localTime || localList[idx].id !== remote.id) {
+          const localTime = new Date(local.actualizado_en || 0).getTime();
+          if (local.id !== remote.id || remoteTime >= localTime) {
             localList[idx] = {
-              ...localList[idx],
+              ...local,
               id: remote.id,
-              tipo: remote.tipo || localList[idx].tipo,
-              datos: remote.datos || localList[idx].datos,
-              documentos: remote.documentos || localList[idx].documentos,
-              ubicacion: remote.ubicacion || localList[idx].ubicacion,
+              tipo: remote.tipo || local.tipo,
+              datos: remote.datos || local.datos,
+              documentos: remote.documentos || local.documentos,
+              ubicacion: remote.ubicacion || local.ubicacion,
               actualizado_en: remote.actualizado_en,
               sincronizado: true,
-              eliminado: remote.eliminado ?? localList[idx].eliminado
+              eliminado: remote.eliminado ?? local.eliminado,
+              version: remote.version || local.version
             };
             modificado = true;
           }
@@ -663,41 +688,106 @@ export class StorageService {
       }
     }
 
-    // 2. Descargar Pagos y Dinero Recaudado
+    // 2. Descargar Pagos (SERVER-FIRST)
     const pagosRes = await SupabaseService.fetchPagos();
-    if (pagosRes.ok && pagosRes.data && pagosRes.data.length > 0) {
+    if (pagosRes.ok && pagosRes.data) {
       const rawPagos = localStorage.getItem(STORAGE_KEYS.PAGOS);
       let localPagos: PagoRegistro[] = rawPagos ? JSON.parse(rawPagos) : [];
       let modificadoPagos = false;
 
-      for (const remote of pagosRes.data) {
-        const existeIdx = localPagos.findIndex(p => 
-          p.id === remote.id ||
-          (p.referencia && remote.referencia && p.referencia.trim().toUpperCase() === remote.referencia.trim().toUpperCase())
+      if (pagosRes.data.length > 0) {
+        const serverPagoIds = new Set(pagosRes.data.map((p: any) => p.id));
+        const serverRefs = new Set(
+          pagosRes.data
+            .filter((p: any) => p.referencia)
+            .map((p: any) => p.referencia.trim().toUpperCase())
         );
 
-        if (existeIdx === -1) {
-          localPagos.unshift({
-            id: remote.id,
-            usuario_id: remote.usuario_id,
-            usuario_nombre: remote.usuario_nombre,
-            usuario_cedula: remote.usuario_cedula,
-            fecha_pago: remote.fecha_pago,
-            plan: remote.plan,
-            servicio: remote.servicio,
-            monto_bs: Number(remote.monto_bs) || 0,
-            metodo_pago: remote.metodo_pago,
-            referencia: remote.referencia || '',
-            estado: remote.estado || 'Solvente',
-            observaciones: remote.observaciones || '',
-            ubicacion: remote.ubicacion,
-            creado_en: remote.creado_en
-          });
-          nuevosPagos++;
-          modificadoPagos = true;
-        } else if (localPagos[existeIdx].id !== remote.id) {
-          localPagos[existeIdx].id = remote.id;
-          modificadoPagos = true;
+        // Proteger registros locales que estén en cola de sincronización pendiente
+        const colaSync = this.obtenerColaSync();
+        const pendingPagoIds = new Set(
+          colaSync
+            .filter(q => q.tipo_entidad === 'pago' && q.estado !== 'sincronizado')
+            .map(q => q.registro_id)
+        );
+
+        const prevPagosLen = localPagos.length;
+        localPagos = localPagos.filter(p => {
+          if (!p.id || p.id.startsWith('pago-local-')) return true;
+          if (pendingPagoIds.has(p.id)) return true; // Preservar pagos pendientes de subir
+          if (serverPagoIds.has(p.id)) return true;
+          if (p.referencia && serverRefs.has(p.referencia.trim().toUpperCase())) return true;
+          return false;
+        });
+        if (localPagos.length !== prevPagosLen) modificadoPagos = true;
+
+        for (const remote of pagosRes.data) {
+          const existeIdx = localPagos.findIndex(p =>
+            p.id === remote.id ||
+            (p.referencia && remote.referencia &&
+              p.referencia.trim().toUpperCase() === remote.referencia.trim().toUpperCase())
+          );
+
+          // Extraer metadatos si vienen incrustados en observaciones [USD: $... | BCV: ... | Membresía: ... | Vence: ...]
+          let montoUsd = remote.monto_usd != null ? Number(remote.monto_usd) : undefined;
+          let tasaBcv = remote.tasa_bcv != null ? Number(remote.tasa_bcv) : undefined;
+          let tipoMembresia = remote.tipo_membresia;
+          let fechaVenc = remote.fecha_vencimiento;
+          let obsTexto = remote.observaciones || '';
+
+          if (obsTexto && obsTexto.startsWith('[')) {
+            const closeIdx = obsTexto.indexOf(']');
+            if (closeIdx > 0) {
+              const header = obsTexto.substring(1, closeIdx);
+              const usdM = header.match(/USD:\s*\$?([\d.]+)/i);
+              if (usdM && montoUsd == null) montoUsd = parseFloat(usdM[1]);
+              const bcvM = header.match(/BCV:\s*([\d.]+)/i);
+              if (bcvM && tasaBcv == null) tasaBcv = parseFloat(bcvM[1]);
+              const memM = header.match(/Membresía:\s*([^|\]]+)/i);
+              if (memM && !tipoMembresia) tipoMembresia = memM[1].trim() as any;
+              const venM = header.match(/Vence:\s*([^|\]]+)/i);
+              if (venM && !fechaVenc) fechaVenc = venM[1].trim();
+              obsTexto = obsTexto.substring(closeIdx + 1).trim();
+            }
+          }
+
+          if (existeIdx === -1) {
+            localPagos.unshift({
+              id: remote.id,
+              usuario_id: remote.usuario_id,
+              usuario_nombre: remote.usuario_nombre,
+              usuario_cedula: remote.usuario_cedula,
+              fecha_pago: remote.fecha_pago,
+              plan: remote.plan,
+              servicio: remote.servicio,
+              monto_bs: Number(remote.monto_bs) || 0,
+              monto_usd: montoUsd,
+              tasa_bcv: tasaBcv,
+              metodo_pago: remote.metodo_pago,
+              referencia: remote.referencia || '',
+              estado: remote.estado || 'Solvente',
+              tipo_membresia: tipoMembresia,
+              fecha_vencimiento: fechaVenc,
+              observaciones: obsTexto,
+              ubicacion: remote.ubicacion,
+              creado_en: remote.creado_en
+            });
+            nuevosPagos++;
+            modificadoPagos = true;
+          } else {
+            localPagos[existeIdx] = {
+              ...localPagos[existeIdx],
+              id: remote.id,
+              monto_bs: Number(remote.monto_bs) || 0,
+              monto_usd: montoUsd ?? localPagos[existeIdx].monto_usd,
+              tasa_bcv: tasaBcv ?? localPagos[existeIdx].tasa_bcv,
+              estado: remote.estado || localPagos[existeIdx].estado,
+              fecha_vencimiento: fechaVenc ?? localPagos[existeIdx].fecha_vencimiento,
+              tipo_membresia: tipoMembresia ?? localPagos[existeIdx].tipo_membresia,
+              observaciones: obsTexto || localPagos[existeIdx].observaciones
+            };
+            modificadoPagos = true;
+          }
         }
       }
 
@@ -708,42 +798,71 @@ export class StorageService {
       }
     }
 
-    // 3. Descargar Asistencias
+    // 3. Descargar Asistencias (SERVER-FIRST)
     const asistRes = await SupabaseService.fetchAsistencias();
-    if (asistRes.ok && asistRes.data && asistRes.data.length > 0) {
+    if (asistRes.ok && asistRes.data) {
       const rawAsist = localStorage.getItem(STORAGE_KEYS.ASISTENCIAS);
       let localAsist: AsistenciaRegistro[] = rawAsist ? JSON.parse(rawAsist) : [];
       let modificadoAsist = false;
 
-      for (const remote of asistRes.data) {
-        const existeIdx = localAsist.findIndex(a => 
-          a.id === remote.id ||
-          (a.usuario_cedula === remote.usuario_cedula && a.fecha === remote.fecha && a.hora_entrada === remote.hora_entrada)
+      if (asistRes.data.length > 0) {
+        const serverAsistIds = new Set(asistRes.data.map((a: any) => a.id));
+
+        const colaSync = this.obtenerColaSync();
+        const pendingAsistIds = new Set(
+          colaSync
+            .filter(q => q.tipo_entidad === 'asistencia' && q.estado !== 'sincronizado')
+            .map(q => q.registro_id)
         );
 
-        if (existeIdx === -1) {
-          localAsist.unshift({
-            id: remote.id,
-            usuario_id: remote.usuario_id,
-            usuario_nombre: remote.usuario_nombre,
-            usuario_cedula: remote.usuario_cedula,
-            disciplina: remote.disciplina,
-            fecha: remote.fecha,
-            hora_entrada: remote.hora_entrada,
-            hora_salida: remote.hora_salida,
-            estado: remote.estado || 'Activo',
-            ubicacion: remote.ubicacion
-          });
-          nuevasAsistencias++;
-          modificadoAsist = true;
-        } else if (localAsist[existeIdx].id !== remote.id) {
-          localAsist[existeIdx].id = remote.id;
-          modificadoAsist = true;
+        const prevAsistLen = localAsist.length;
+        localAsist = localAsist.filter(a => {
+          if (!a.id || a.id.startsWith('asist-local-')) return true;
+          if (pendingAsistIds.has(a.id)) return true;
+          return serverAsistIds.has(a.id);
+        });
+        if (localAsist.length !== prevAsistLen) modificadoAsist = true;
+
+        for (const remote of asistRes.data) {
+          const existeIdx = localAsist.findIndex(a =>
+            a.id === remote.id ||
+            (a.usuario_cedula === remote.usuario_cedula &&
+              a.fecha === remote.fecha &&
+              a.hora_entrada === remote.hora_entrada)
+          );
+
+          if (existeIdx === -1) {
+            localAsist.unshift({
+              id: remote.id,
+              usuario_id: remote.usuario_id,
+              usuario_nombre: remote.usuario_nombre,
+              usuario_cedula: remote.usuario_cedula,
+              disciplina: remote.disciplina,
+              fecha: remote.fecha,
+              hora_entrada: remote.hora_entrada,
+              hora_salida: remote.hora_salida,
+              tiempo_horas: remote.tiempo_horas,
+              estado: remote.estado || 'Activo',
+              ubicacion: remote.ubicacion
+            });
+            nuevasAsistencias++;
+            modificadoAsist = true;
+          } else {
+            localAsist[existeIdx] = {
+              ...localAsist[existeIdx],
+              id: remote.id,
+              hora_salida: remote.hora_salida ?? localAsist[existeIdx].hora_salida,
+              tiempo_horas: remote.tiempo_horas ?? localAsist[existeIdx].tiempo_horas,
+              estado: remote.estado || localAsist[existeIdx].estado
+            };
+            modificadoAsist = true;
+          }
         }
       }
 
       if (modificadoAsist) {
         localStorage.setItem(STORAGE_KEYS.ASISTENCIAS, JSON.stringify(localAsist));
+        window.dispatchEvent(new CustomEvent('mpv-asistencia-updated'));
         window.dispatchEvent(new CustomEvent('mpv-asistencias-updated'));
         window.dispatchEvent(new CustomEvent('mpv-data-updated'));
       }
@@ -1289,8 +1408,151 @@ export class StorageService {
       fecha: now
     });
 
+    // Disparar auto-sync inmediato si hay conexión
+    const config = this.obtenerConfig();
+    if (config.modo_red === 'online' && config.auto_sync) {
+      setTimeout(() => {
+        StorageService.procesarColaSincronizacion().catch(() => {});
+      }, 500);
+    }
+
     window.dispatchEvent(new CustomEvent('mpv-pagos-updated'));
     return nuevoPago;
+  }
+
+  /**
+   * Elimina un registro de pago y encola la eliminación para Supabase con auditoría.
+   */
+  static eliminarPago(pagoId: string, operadorCedula: string): boolean {
+    const raw = localStorage.getItem(STORAGE_KEYS.PAGOS);
+    let pagos: PagoRegistro[] = raw ? JSON.parse(raw) : [];
+    const target = pagos.find(p => p.id === pagoId);
+    if (!target) return false;
+
+    // Remover pago del almacenamiento local
+    pagos = pagos.filter(p => p.id !== pagoId);
+    localStorage.setItem(STORAGE_KEYS.PAGOS, JSON.stringify(pagos));
+
+    // Encolar DELETE para Supabase
+    this.encolarSincronizacion({
+      id: 'sync-' + Math.random().toString(36).substring(2, 9),
+      registro_id: pagoId,
+      operacion: 'DELETE',
+      payload: { id: pagoId },
+      hlc_timestamp: HybridLogicalClock.now(),
+      intentos: 0,
+      estado: 'pendiente',
+      creado_en: new Date().toISOString(),
+      tipo_entidad: 'pago',
+      resumen: `Eliminar Pago Bs. ${Number(target.monto_bs || 0).toFixed(2)} - ${target.usuario_nombre}`,
+      servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+    });
+
+    this.registrarAuditoria({
+      id: 'aud-' + Math.random().toString(36).substring(2, 9),
+      operador_cedula: operadorCedula,
+      accion: 'ELIMINAR_PAGO',
+      entidad_tipo: 'pago',
+      entidad_id: pagoId,
+      detalles: `Pago de Bs. ${Number(target.monto_bs || 0).toFixed(2)} (${target.usuario_nombre}) eliminado por el operador.`,
+      fecha: new Date().toISOString()
+    });
+
+    // Disparar auto-sync inmediato si hay conexión
+    const configDel = this.obtenerConfig();
+    if (configDel.modo_red === 'online' && configDel.auto_sync) {
+      setTimeout(() => {
+        StorageService.procesarColaSincronizacion().catch(() => {});
+      }, 500);
+    }
+
+    window.dispatchEvent(new CustomEvent('mpv-pagos-updated'));
+    return true;
+  }
+
+  /**
+   * Calcula la fecha del próximo viernes (ciclo semanal Lunes a Viernes).
+   * @param semanas Número de semanas (1 = viernes de esta semana o del ciclo siguiente, 2 = 2 semanas, etc.)
+   * @param fechaBase Fecha de partida (opcional, por defecto hoy)
+   */
+  static calcularProximoViernes(semanas: number = 1, fechaBase?: string): string {
+    const base = fechaBase ? new Date(fechaBase.includes('T') ? fechaBase : fechaBase + 'T12:00:00') : new Date();
+    const diaSemana = base.getDay(); // 0 = Domingo, 1 = Lunes, ..., 5 = Viernes, 6 = Sábado
+    
+    let diasHastaViernes = 0;
+    if (diaSemana >= 1 && diaSemana < 5) {
+      diasHastaViernes = 5 - diaSemana;
+    } else if (diaSemana === 5) {
+      // Si hoy es viernes y renueva 1 semana, corre al siguiente viernes
+      diasHastaViernes = 7;
+    } else if (diaSemana === 6) {
+      // Sábado -> próximo viernes (+6)
+      diasHastaViernes = 6;
+    } else {
+      // Domingo -> viernes de la semana que empieza (+5)
+      diasHastaViernes = 5;
+    }
+
+    const semanasAdicionales = Math.max(0, semanas - 1) * 7;
+    const totalDias = diasHastaViernes + semanasAdicionales;
+
+    const fechaFinal = new Date(base.getTime());
+    fechaFinal.setDate(fechaFinal.getDate() + totalDias);
+    return fechaFinal.toISOString().split('T')[0];
+  }
+
+  /**
+   * Renueva la membresía semanal o ajustada de un usuario del gimnasio,
+   * y registra opcionalmente el pago en caja con auditoría y sincronización.
+   */
+  static renovarMembresiaGym(
+    params: {
+      personaId: string;
+      nuevaFechaVencimiento: string;
+      tipoMembresia?: 'Semanal' | 'Mensual' | 'Personalizada';
+      pago?: {
+        monto_bs: number;
+        monto_usd?: number;
+        tasa_bcv?: number;
+        metodo_pago: MetodoPago;
+        referencia: string;
+        observaciones?: string;
+      };
+    },
+    operadorCedula: string
+  ): boolean {
+    const personas = this.obtenerRegistros('persona');
+    const target = personas.find(p => p.id === params.personaId);
+    if (!target) return false;
+
+    target.datos.fecha_vencimiento = params.nuevaFechaVencimiento;
+    target.datos.tipo_membresia = params.tipoMembresia || 'Semanal';
+    target.datos.estado_solvencia = 'Activo';
+    target.actualizado_en = new Date().toISOString();
+
+    this.guardarRegistro(target, operadorCedula);
+
+    if (params.pago && params.pago.monto_bs >= 0) {
+      this.registrarPago({
+        usuario_id: target.datos.id_gbp || target.id,
+        usuario_nombre: `${target.datos.nombre} ${target.datos.apellido}`.trim(),
+        usuario_cedula: target.datos.cedula,
+        fecha_pago: new Date().toISOString().split('T')[0],
+        plan: params.tipoMembresia === 'Semanal' ? 'Semanal' : 'Abono por Adelanto',
+        servicio: 'Servicio de Maquinas Musculacion',
+        monto_bs: params.pago.monto_bs,
+        monto_usd: params.pago.monto_usd,
+        tasa_bcv: params.pago.tasa_bcv,
+        metodo_pago: params.pago.metodo_pago,
+        referencia: params.pago.referencia,
+        estado: 'Solvente',
+        tipo_membresia: params.tipoMembresia || 'Semanal',
+        fecha_vencimiento: params.nuevaFechaVencimiento,
+        observaciones: params.pago.observaciones || 'Renovación membresía gimnasio'
+      }, operadorCedula);
+    }
+
+    return true;
   }
 
   // --- Control de Asistencias ---
@@ -1366,6 +1628,14 @@ export class StorageService {
       fecha: now.toISOString()
     });
 
+    // Auto-sync inmediato si hay conexión
+    const configAsist = this.obtenerConfig();
+    if (configAsist.modo_red === 'online' && configAsist.auto_sync) {
+      setTimeout(() => {
+        StorageService.procesarColaSincronizacion().catch(() => {});
+      }, 500);
+    }
+
     window.dispatchEvent(new CustomEvent('mpv-asistencia-updated'));
     return nuevaAsistencia;
   }
@@ -1383,6 +1653,21 @@ export class StorageService {
 
     localStorage.setItem(STORAGE_KEYS.ASISTENCIAS, JSON.stringify(asistencias));
 
+    // Encolar UPDATE de salida para Supabase
+    this.encolarSincronizacion({
+      id: 'sync-' + Math.random().toString(36).substring(2, 9),
+      registro_id: asistenciaId,
+      operacion: 'UPDATE',
+      payload: { ...target },
+      hlc_timestamp: HybridLogicalClock.now(),
+      intentos: 0,
+      estado: 'pendiente',
+      creado_en: now.toISOString(),
+      tipo_entidad: 'asistencia',
+      resumen: `Salida - ${target.usuario_nombre}`,
+      servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+    });
+
     this.registrarAuditoria({
       id: 'aud-' + Math.random().toString(36).substring(2, 9),
       operador_cedula: operadorCedula,
@@ -1392,6 +1677,14 @@ export class StorageService {
       detalles: `Salida registrada para ${target.usuario_nombre} a las ${timeStr}.`,
       fecha: now.toISOString()
     });
+
+    // Auto-sync inmediato si hay conexión
+    const configSalida = this.obtenerConfig();
+    if (configSalida.modo_red === 'online' && configSalida.auto_sync) {
+      setTimeout(() => {
+        StorageService.procesarColaSincronizacion().catch(() => {});
+      }, 500);
+    }
 
     window.dispatchEvent(new CustomEvent('mpv-asistencia-updated'));
     return true;

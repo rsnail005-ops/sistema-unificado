@@ -136,7 +136,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               Correo Electrónico o Cédula
             </label>
             <div style={{ position: 'relative' }}>
-              <Mail size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#64748b' }} />
+              <Mail size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#64748b', pointerEvents: 'none' }} />
               <input
                 type="text"
                 required
@@ -155,7 +155,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               Contraseña
             </label>
             <div style={{ position: 'relative' }}>
-              <Lock size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#64748b' }} />
+              <Lock size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#64748b', pointerEvents: 'none' }} />
               <input
                 type="password"
                 required

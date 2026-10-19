@@ -43,10 +43,12 @@
 * **Autocompletado de Nombres:** Extracción inmediata de nombres y apellidos oficiales desde fuentes de registro civil (ArmandoData / IVSS / SAIME).
 
 ### 3. 🏋️ Gestión de la Gran Base de Paz (Gimnasio Vertical)
-* **Control de Pisos y Áreas:** Crossfit, Musculación, Spinning, Artes Marciales, Danza y Cancha Multiuso.
-* **Sala de Spinning Interactiva:** Mapa visual de bicicletas organizadas por filas con reserva y asignación por turno en vivo.
-* **Control de Asistencia:** Registro ágil de entradas y salidas con cálculo automático de horas de permanencia y estado de solvencia.
-* **Control Financiero:** Pagos de inscripciones, mensualidades, registro de transferencias, Pago Móvil, divisas en efectivo y cálculo de tasa oficial BCV.
+* **Control de Membresías Semanales (L-V):** Ciclo operativo de lunes a viernes con cálculo automático del viernes de corte (+1 semana, +2 semanas o fecha libre en calendario).
+* **Monto Libre y Ajustable:** Flexibilidad total para que el operador o usuario defina el monto acordado en Bolívares, con equivalencia en tiempo real en dólares a Tasa Oficial BCV.
+* **Atletas de Alto Rendimiento:** Categoría especial exonerada (0 Bs permanente) con insignia dorada y registro de disciplina deportiva.
+* **Aislamiento Territorial:** Separación y custodia de miembros según su Base de Misiones y Estado federal.
+* **Control de Acceso Inmediato:** Botón de check-in en 1 clic con validación instantánea de solvencia y registro de hora de entrada.
+* **Caja y Pagos Avanzada:** Registro contable automático, eliminación de recibos con auditoría y botón de sincronización directa a la nube de Supabase.
 
 ### 4. 🔐 Bóveda Criptográfica y Seguridad
 * **Auth Vault Local:** Cifrado seguro SHA-256 + Salt con Web Crypto API.

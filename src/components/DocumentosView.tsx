@@ -137,7 +137,7 @@ export const DocumentosView: React.FC<DocumentosViewProps> = ({ sesion }) => {
       {/* Buscador */}
       <div className="card" style={{ padding: '16px', marginBottom: '20px' }}>
         <div style={{ position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#64748b' }} />
+          <Search size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#64748b', pointerEvents: 'none' }} />
           <input
             type="text"
             placeholder="Buscar por nombre, texto o contenido de los documentos..."

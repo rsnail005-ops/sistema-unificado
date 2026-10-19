@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, WifiOff, RefreshCw, ShieldCheck, Settings, User, Clock, LogOut, CheckCircle, XCircle, Info, AlertTriangle, DollarSign } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, ShieldCheck, Settings, User, Clock, LogOut, CheckCircle, XCircle, Info, AlertTriangle, DollarSign, Download, Sparkles } from 'lucide-react';
 import { StorageService, AppConfig } from '../services/storage';
 import { UsuarioSesion, SyncItem } from '../types';
 import { SupabaseService, SyncResult } from '../services/supabase';
 import { LOGO_OFICIAL } from '../assets/logos';
 import { BcvService, TasaBCVInfo } from '../services/bcvService';
 import { BcvModal } from './BcvModal';
+import { UpdateService, AppRelease } from '../services/updateService';
 
 interface DesktopHeaderProps {
   onOpenSettings: () => void;
   onOpenAuth: () => void;
   onNavigateSync?: () => void;
+  onOpenUpdateModal?: (release: AppRelease) => void;
   sesion: UsuarioSesion | null;
 }
 
@@ -27,6 +29,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
   onOpenSettings,
   onOpenAuth,
   onNavigateSync,
+  onOpenUpdateModal,
   sesion
 }) => {
   const [config, setConfig] = useState<AppConfig>(StorageService.obtenerConfig());
@@ -36,6 +39,9 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
   const [toast, setToast] = useState<SyncToast>({ visible: false, result: null, tipo: 'info' });
   const [tasaBCV, setTasaBCV] = useState<TasaBCVInfo>(BcvService.obtenerTasaSincrona());
   const [isBcvModalOpen, setIsBcvModalOpen] = useState(false);
+  const [currentVersion, setCurrentVersion] = useState<string>(() => UpdateService.obtenerVersionInstalada());
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [hasNewUpdate, setHasNewUpdate] = useState(false);
 
   const refreshData = () => {
     setConfig(StorageService.obtenerConfig());
@@ -71,6 +77,53 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
       tipo,
       hora: result.hora
     });
+  };
+
+  const handleCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      const res = await UpdateService.verificarActualizacionManual();
+      setIsCheckingUpdate(false);
+      setCurrentVersion(res.versionInstalada);
+
+      if (res.hayNueva && res.release) {
+        setHasNewUpdate(true);
+        if (onOpenUpdateModal) {
+          onOpenUpdateModal(res.release);
+        } else {
+          window.dispatchEvent(new CustomEvent('mpv-trigger-update-modal', { detail: res.release }));
+        }
+      } else if (res.error) {
+        setToast({
+          visible: true,
+          titulo: 'Verificación de Actualizaciones',
+          mensaje: `No se pudo conectar con el servidor: ${res.error}`,
+          result: null,
+          tipo: 'warning',
+          hora: new Date().toLocaleTimeString('es-VE')
+        });
+      } else {
+        setHasNewUpdate(false);
+        setToast({
+          visible: true,
+          titulo: 'Sistema al Día',
+          mensaje: `¡Excelente! Ya tienes la versión más reciente del sistema (v${res.versionInstalada}).`,
+          result: null,
+          tipo: 'success',
+          hora: new Date().toLocaleTimeString('es-VE')
+        });
+      }
+    } catch (e: any) {
+      setIsCheckingUpdate(false);
+      setToast({
+        visible: true,
+        titulo: 'Error',
+        mensaje: e.message || 'Error al verificar actualización',
+        result: null,
+        tipo: 'error',
+        hora: new Date().toLocaleTimeString('es-VE')
+      });
+    }
   };
 
   useEffect(() => {

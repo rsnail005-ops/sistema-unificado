@@ -350,29 +350,88 @@ export class SupabaseService {
       }
 
       const headers = this.getHeaders();
+      const raw = item.payload;
+      const targetUUID = toValidUUID(item.registro_id || raw?.id || item.id);
 
-      // Adecuar payload al esquema oficial de Supabase
-      const payload = { ...item.payload };
-      const targetUUID = toValidUUID(item.registro_id || payload.id || item.id);
-      payload.id = targetUUID;
-      payload.sincronizado = true;
-      payload.actualizado_en = new Date().toISOString();
-      if (!payload.creado_por) payload.creado_por = 'operador';
-      if (!payload.hlc_timestamp) payload.hlc_timestamp = item.hlc_timestamp || new Date().toISOString();
-      if (!payload.ubicacion) payload.ubicacion = { estado: '', municipio: '', parroquia: '' };
-
-      // Determinar tabla destino en Supabase según tipo de entidad
-      const tableName = item.tipo_entidad === 'pago' ? 'pagos' 
-                      : item.tipo_entidad === 'asistencia' ? 'asistencias' 
+      // Determinar tabla destino
+      const tableName = item.tipo_entidad === 'pago' ? 'pagos'
+                      : item.tipo_entidad === 'asistencia' ? 'asistencias'
                       : 'registros';
 
-      if (tableName === 'pagos' && !payload.registrado_por) {
-        payload.registrado_por = payload.creado_por || 'operador';
-      }
-      if (tableName === 'asistencias' && !payload.registrado_por) {
-        payload.registrado_por = payload.creado_por || 'operador';
+      // ── Construir payload limpio según la tabla ──────────────────────────────
+      let payload: Record<string, any>;
+
+      if (tableName === 'pagos') {
+        // Formatear observaciones para preservar metadatos de membresía y divisas sin requerir columnas extra
+        let obsTexto = (raw.observaciones || '').trim();
+        const metaParts: string[] = [];
+        if (raw.monto_usd != null && !obsTexto.includes('USD:')) metaParts.push(`USD: $${Number(raw.monto_usd).toFixed(2)}`);
+        if (raw.tasa_bcv != null && !obsTexto.includes('BCV:')) metaParts.push(`BCV: ${Number(raw.tasa_bcv).toFixed(4)}`);
+        if (raw.tipo_membresia && !obsTexto.includes('Membresía:')) metaParts.push(`Membresía: ${raw.tipo_membresia}`);
+        if (raw.fecha_vencimiento && !obsTexto.includes('Vence:')) metaParts.push(`Vence: ${raw.fecha_vencimiento}`);
+        
+        if (metaParts.length > 0) {
+          const metaHeader = `[${metaParts.join(' | ')}]`;
+          obsTexto = obsTexto ? `${metaHeader} ${obsTexto}` : metaHeader;
+        }
+
+        // Solo las 15 columnas exactas de la tabla "pagos" en Supabase:
+        // id, usuario_id, usuario_nombre, usuario_cedula, fecha_pago, plan, servicio, monto_bs, metodo_pago, referencia, estado, observaciones, ubicacion, registrado_por, creado_en
+        payload = {
+          id: targetUUID,
+          usuario_id: String(raw.usuario_id || ''),
+          usuario_nombre: String(raw.usuario_nombre || 'Usuario'),
+          usuario_cedula: String(raw.usuario_cedula || 'V-00000000'),
+          fecha_pago: raw.fecha_pago || new Date().toISOString().split('T')[0],
+          plan: raw.plan || 'Mensual',
+          servicio: raw.servicio || 'Gimnasio',
+          monto_bs: Number(raw.monto_bs) || 0,
+          metodo_pago: raw.metodo_pago || 'Punto de Venta',
+          referencia: String(raw.referencia || ''),
+          estado: raw.estado || 'Solvente',
+          observaciones: obsTexto,
+          ubicacion: raw.ubicacion || { estado: '', municipio: '', parroquia: '' },
+          registrado_por: String(raw.registrado_por || raw.creado_por || 'operador'),
+          creado_en: raw.creado_en || new Date().toISOString()
+        };
+
+      } else if (tableName === 'asistencias') {
+        // Solo columnas exactas de la tabla "asistencias" en Supabase:
+        // id, usuario_id, usuario_nombre, usuario_cedula, disciplina, fecha, hora_entrada, hora_salida, estado, ubicacion, registrado_por, creado_en
+        payload = {
+          id: targetUUID,
+          usuario_id: String(raw.usuario_id || ''),
+          usuario_nombre: String(raw.usuario_nombre || 'Usuario'),
+          usuario_cedula: String(raw.usuario_cedula || 'V-00000000'),
+          disciplina: raw.disciplina || 'General',
+          fecha: raw.fecha || new Date().toISOString().split('T')[0],
+          hora_entrada: raw.hora_entrada || new Date().toTimeString().split(' ')[0],
+          estado: raw.estado || 'Activo',
+          ubicacion: raw.ubicacion || { estado: '', municipio: '', parroquia: '' },
+          registrado_por: String(raw.registrado_por || raw.creado_por || 'operador'),
+          creado_en: raw.creado_en || new Date().toISOString()
+        };
+        if (raw.hora_salida) payload.hora_salida = raw.hora_salida;
+
+      } else {
+        // Tabla "registros" — schema de 12 columnas oficiales
+        payload = {
+          id: targetUUID,
+          tipo: raw.tipo || 'persona',
+          datos: raw.datos || {},
+          documentos: Array.isArray(raw.documentos) ? raw.documentos : [],
+          ubicacion: raw.ubicacion || { estado: '', municipio: '', parroquia: '' },
+          creado_por: raw.creado_por || raw.registrado_por || 'operador',
+          creado_en: raw.creado_en || new Date().toISOString(),
+          actualizado_en: new Date().toISOString(),
+          sincronizado: true,
+          hlc_timestamp: item.hlc_timestamp || raw.hlc_timestamp || new Date().toISOString(),
+          version: typeof raw.version === 'number' ? raw.version : 1,
+          eliminado: Boolean(raw.eliminado)
+        };
       }
 
+      // ── Ejecutar operación ───────────────────────────────────────────────────
       if (item.operacion === 'INSERT') {
         const res = await fetch(`${url}/rest/v1/${tableName}`, {
           method: 'POST',
@@ -382,7 +441,7 @@ export class SupabaseService {
 
         if (!res.ok) {
           const errText = await res.text();
-          // Si el registro ya existe en el servidor remoto, hacer fallback a PATCH/UPDATE
+          // Fallback: si ya existe, hacer PATCH
           if (res.status === 409 || errText.includes('duplicate key') || errText.includes('23505')) {
             const updateRes = await fetch(`${url}/rest/v1/${tableName}?id=eq.${targetUUID}`, {
               method: 'PATCH',
@@ -394,6 +453,7 @@ export class SupabaseService {
           return { ok: false, error: `Error ${res.status}: ${errText}` };
         }
         return { ok: true };
+
       } else if (item.operacion === 'UPDATE') {
         const res = await fetch(`${url}/rest/v1/${tableName}?id=eq.${targetUUID}`, {
           method: 'PATCH',
@@ -413,6 +473,7 @@ export class SupabaseService {
           return { ok: false, error: `Error ${res.status}: ${errText}` };
         }
         return { ok: true };
+
       } else if (item.operacion === 'DELETE') {
         const res = await fetch(`${url}/rest/v1/${tableName}?id=eq.${targetUUID}`, {
           method: 'DELETE',

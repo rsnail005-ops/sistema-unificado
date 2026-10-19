@@ -338,7 +338,7 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
       <div className="card" style={{ padding: '16px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#64748b' }} />
+            <Search size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#64748b', pointerEvents: 'none' }} />
             <input
               type="text"
               placeholder="Buscar por cédula, nombre, disciplina o estado..."

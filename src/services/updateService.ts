@@ -1,4 +1,5 @@
 import { SupabaseService } from './supabase';
+import { APP_VERSION as DEFAULT_APP_VERSION } from '../version';
 
 export interface AppRelease {
   id: string;
@@ -11,8 +12,14 @@ export interface AppRelease {
   publicado_por: string;
 }
 
-/** Versión actualmente instalada. Cámbiala al compilar cada release. */
-export const APP_VERSION = '1.0.0';
+/** Versión base compilada del sistema */
+export const APP_VERSION = DEFAULT_APP_VERSION;
+
+/**
+ * Clave en localStorage que guarda la última versión que el usuario
+ * ya instaló y que está actualmente en ejecución.
+ */
+const INSTALLED_VERSION_KEY = 'mpv_installed_app_version';
 
 const RELEASES_TABLE = 'app_releases';
 
@@ -42,15 +49,53 @@ export class UpdateService {
     }
   }
 
-  /** Compara semver: devuelve true si remota > local */
+  /** Devuelve la versión que el usuario tiene instalada (localStorage o fallback a versión base). */
+  static obtenerVersionInstalada(): string {
+    return localStorage.getItem(INSTALLED_VERSION_KEY) || DEFAULT_APP_VERSION;
+  }
+
+  /** Persiste en localStorage la nueva versión instalada y notifica a los componentes React. */
+  static marcarVersionInstalada(version: string): void {
+    const clean = version.replace(/^v/, '');
+    localStorage.setItem(INSTALLED_VERSION_KEY, clean);
+    window.dispatchEvent(new CustomEvent('mpv-version-updated', { detail: clean }));
+  }
+
+  /**
+   * Compara semver: devuelve true si `remota` es mayor que
+   * la versión instalada conocida (localStorage ó DEFAULT_APP_VERSION).
+   */
   static hayNuevaVersion(remota: string): boolean {
     const parse = (v: string) =>
       v.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
     const [ma, mi, pa] = parse(remota);
-    const [la, li, lp] = parse(APP_VERSION);
+    const localVersion = UpdateService.obtenerVersionInstalada();
+    const [la, li, lp] = parse(localVersion);
     if (ma !== la) return ma > la;
     if (mi !== li) return mi > li;
     return pa > lp;
+  }
+
+  /**
+   * Verifica manualmente si hay una nueva versión y devuelve el resultado detallado.
+   */
+  static async verificarActualizacionManual(): Promise<{
+    hayNueva: boolean;
+    release: AppRelease | null;
+    versionInstalada: string;
+    error?: string;
+  }> {
+    const versionInstalada = UpdateService.obtenerVersionInstalada();
+    try {
+      const release = await UpdateService.obtenerUltimoRelease();
+      if (!release) {
+        return { hayNueva: false, release: null, versionInstalada };
+      }
+      const hayNueva = UpdateService.hayNuevaVersion(release.version);
+      return { hayNueva, release, versionInstalada };
+    } catch (err: any) {
+      return { hayNueva: false, release: null, versionInstalada, error: err.message || 'Error de conexión' };
+    }
   }
 
   /**

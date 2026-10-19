@@ -91,26 +91,53 @@ CREATE POLICY "registros_auth_insert" ON public.registros FOR INSERT TO authenti
 CREATE POLICY "registros_auth_update" ON public.registros FOR UPDATE TO authenticated USING (true);
 CREATE POLICY "registros_auth_delete" ON public.registros FOR DELETE TO authenticated USING (true);
 
--- 8. Políticas limpias para pagos
+-- 8. Políticas limpias para pagos (Acceso completo para operaciones del sistema)
 DROP POLICY IF EXISTS pagos_autenticados_select ON public.pagos;
 DROP POLICY IF EXISTS pagos_autenticados_insert ON public.pagos;
 DROP POLICY IF EXISTS pagos_autenticados_update ON public.pagos;
+DROP POLICY IF EXISTS pagos_auth_select ON public.pagos;
+DROP POLICY IF EXISTS pagos_auth_insert ON public.pagos;
+DROP POLICY IF EXISTS pagos_auth_update ON public.pagos;
+DROP POLICY IF EXISTS pagos_auth_delete ON public.pagos;
 CREATE POLICY "pagos_auth_select" ON public.pagos FOR SELECT TO authenticated USING (true);
 CREATE POLICY "pagos_auth_insert" ON public.pagos FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "pagos_auth_update" ON public.pagos FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "pagos_auth_delete" ON public.pagos FOR DELETE TO authenticated USING (true);
 
 -- 9. Políticas limpias para asistencias
 DROP POLICY IF EXISTS asistencias_autenticados_select ON public.asistencias;
 DROP POLICY IF EXISTS asistencias_autenticados_insert ON public.asistencias;
 DROP POLICY IF EXISTS asistencias_autenticados_update ON public.asistencias;
+DROP POLICY IF EXISTS asistencias_auth_select ON public.asistencias;
+DROP POLICY IF EXISTS asistencias_auth_insert ON public.asistencias;
+DROP POLICY IF EXISTS asistencias_auth_update ON public.asistencias;
+DROP POLICY IF EXISTS asistencias_auth_delete ON public.asistencias;
 CREATE POLICY "asistencias_auth_select" ON public.asistencias FOR SELECT TO authenticated USING (true);
 CREATE POLICY "asistencias_auth_insert" ON public.asistencias FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "asistencias_auth_update" ON public.asistencias FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "asistencias_auth_delete" ON public.asistencias FOR DELETE TO authenticated USING (true);
 
--- 10. Políticas anon de solo lectura (necesarias para health check y modo desconectado)
+-- 10. Políticas para anon (Garantiza que la app desktop pueda sincronizar en cualquier circunstancia)
 DROP POLICY IF EXISTS registros_anon_read ON public.registros;
-CREATE POLICY "registros_anon_read" ON public.registros FOR SELECT TO anon USING (true);
+DROP POLICY IF EXISTS registros_anon_all ON public.registros;
+CREATE POLICY "registros_anon_all" ON public.registros FOR ALL TO anon USING (true) WITH CHECK (true);
+
 DROP POLICY IF EXISTS pagos_anon_read ON public.pagos;
-CREATE POLICY "pagos_anon_read" ON public.pagos FOR SELECT TO anon USING (true);
+DROP POLICY IF EXISTS pagos_anon_all ON public.pagos;
+CREATE POLICY "pagos_anon_all" ON public.pagos FOR ALL TO anon USING (true) WITH CHECK (true);
+
 DROP POLICY IF EXISTS asistencias_anon_read ON public.asistencias;
-CREATE POLICY "asistencias_anon_read" ON public.asistencias FOR SELECT TO anon USING (true);
+DROP POLICY IF EXISTS asistencias_anon_all ON public.asistencias;
+CREATE POLICY "asistencias_anon_all" ON public.asistencias FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- 11. Columnas opcionales recomendadas para la tabla pagos (si se desea consultarlas de forma nativa en SQL)
+ALTER TABLE public.pagos ADD COLUMN IF NOT EXISTS monto_usd NUMERIC(10, 2);
+ALTER TABLE public.pagos ADD COLUMN IF NOT EXISTS tasa_bcv NUMERIC(12, 4);
+ALTER TABLE public.pagos ADD COLUMN IF NOT EXISTS tipo_membresia VARCHAR(50);
+ALTER TABLE public.pagos ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;
+ALTER TABLE public.pagos ADD COLUMN IF NOT EXISTS actualizado_en TIMESTAMPTZ DEFAULT NOW();
+
+-- 12. Columnas opcionales recomendadas para la tabla asistencias
+ALTER TABLE public.asistencias ADD COLUMN IF NOT EXISTS tiempo_horas NUMERIC(5, 2);
+ALTER TABLE public.asistencias ADD COLUMN IF NOT EXISTS actualizado_en TIMESTAMPTZ DEFAULT NOW();
+

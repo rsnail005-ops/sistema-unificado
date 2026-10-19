@@ -417,16 +417,94 @@ ipcMain.handle('update:download', async (event, { downloadUrl }) => {
 
 /**
  * update:launch
- *   Abre el instalador descargado con el shell del sistema operativo y cierra
- *   la aplicación para que el instalador pueda reemplazar los archivos.
+ *   Reemplaza el ejecutable actual (.exe) con la nueva versión descargada
+ *   y reinicia automáticamente la aplicación en la misma ubicación original.
  */
 ipcMain.handle('update:launch', async (event, { installerPath }) => {
+  const { spawn } = require('child_process');
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
   const { shell } = require('electron');
+
   try {
-    await shell.openPath(installerPath);
-    setTimeout(() => app.quit(), 1500);
+    if (!installerPath || !fs.existsSync(installerPath)) {
+      return { ok: false, error: 'El archivo descargado no existe en el disco.' };
+    }
+
+    const isSetupInstaller = installerPath.toLowerCase().includes('setup');
+
+    // 1. Si es un instalador formal NSIS (Setup.exe), abrirlo con el shell
+    if (isSetupInstaller) {
+      await shell.openPath(installerPath);
+      setTimeout(() => app.quit(), 1500);
+      return { ok: true };
+    }
+
+    // 2. Si estamos en modo desarrollo (no empaquetado)
+    if (!app.isPackaged) {
+      await shell.openPath(installerPath);
+      setTimeout(() => app.quit(), 1500);
+      return { ok: true };
+    }
+
+    // 3. Auto-reemplazo en caliente de ejecutable portable / standalone
+    // PORTABLE_EXECUTABLE_FILE contiene la ruta del .exe que el usuario ejecutó originalmente
+    const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+    const currentPid = process.pid;
+    const updaterBatPath = path.join(os.tmpdir(), `mpv-update-runner-${Date.now()}.bat`);
+
+    // Script batch que espera a que el proceso actual muera, sobreescribe el ejecutable original y lo arranca
+    const batchContent = `@echo off
+chcp 65001 > nul
+set "PID=${currentPid}"
+set "NEW_EXE=${installerPath.replace(/"/g, '')}"
+set "TARGET_EXE=${targetExe.replace(/"/g, '')}"
+
+:wait_process
+timeout /t 1 /nobreak > nul
+tasklist /fi "PID eq %PID%" 2>nul | find "%PID%" > nul
+if %errorlevel% equ 0 (
+    goto wait_process
+)
+
+timeout /t 2 /nobreak > nul
+
+set ATTEMPTS=0
+:try_copy
+copy /y "%NEW_EXE%" "%TARGET_EXE%" > nul 2>&1
+if %errorlevel% neq 0 (
+    set /a ATTEMPTS+=1
+    if %ATTEMPTS% leq 20 (
+        timeout /t 1 /nobreak > nul
+        goto try_copy
+    )
+)
+
+start "" "%TARGET_EXE%"
+timeout /t 3 /nobreak > nul
+del "%NEW_EXE%" > nul 2>&1
+(goto) 2>nul & del "%~f0"
+`;
+
+    fs.writeFileSync(updaterBatPath, batchContent, { encoding: 'utf8' });
+
+    // Lanzar script batch completamente desacoplado
+    const child = spawn('cmd.exe', ['/c', updaterBatPath], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
+    child.unref();
+
+    // Salir inmediatamente para liberar el archivo .exe y permitir el sobreescrito
+    setTimeout(() => {
+      app.exit(0);
+    }, 400);
+
     return { ok: true };
   } catch (err) {
+    console.error('Error al ejecutar reemplazo de actualización:', err);
     return { ok: false, error: err.message };
   }
 });
@@ -435,11 +513,39 @@ ipcMain.handle('update:launch', async (event, { installerPath }) => {
  * updater:detectLatestExe
  *   Detecta automáticamente el instalador .exe más reciente generado en dist-electron/
  */
-ipcMain.handle('updater:detectLatestExe', async () => {
+ipcMain.handle('updater:detectLatestExe', async (event, params = {}) => {
+  // Si se envió un archivo específico que existe, usarlo directamente
+  if (params.preferredPath && fs.existsSync(params.preferredPath)) {
+    try {
+      const stats = fs.statSync(params.preferredPath);
+      if (stats.isFile() && params.preferredPath.endsWith('.exe')) {
+        return {
+          found: true,
+          fileName: path.basename(params.preferredPath),
+          filePath: params.preferredPath,
+          sizeBytes: stats.size,
+          sizeMB: (stats.size / (1024 * 1024)).toFixed(1),
+          mtime: stats.mtime
+        };
+      }
+    } catch { /* noop */ }
+  }
+
   const candidateDirs = [
+    // Si viene una carpeta preferida
+    params.preferredPath ? (fs.existsSync(params.preferredPath) ? (fs.statSync(params.preferredPath).isDirectory() ? params.preferredPath : path.dirname(params.preferredPath)) : null) : null,
+    // 1. Ruta absoluta en Documents del usuario
+    path.join(app.getPath('documents'), 'movimiento-paz-vida-doc/movimiento-paz-vida-doc/movimiento-paz-vida-doc/movimiento-paz-vida-app/dist-electron'),
+    path.join(app.getPath('documents'), 'movimiento-paz-vida-app/dist-electron'),
+    // 2. Rutas relativas para modo desarrollo y carpetas padre
     path.join(__dirname, '../dist-electron'),
-    path.join(process.cwd(), 'dist-electron')
-  ];
+    path.join(__dirname, '../../dist-electron'),
+    path.join(__dirname, '../../../dist-electron'),
+    path.join(process.cwd(), 'dist-electron'),
+    path.join(process.cwd(), '../dist-electron'),
+    path.join(app.getAppPath(), '../dist-electron'),
+    path.join(app.getAppPath(), '../../dist-electron'),
+  ].filter(Boolean);
 
   for (const dir of candidateDirs) {
     if (fs.existsSync(dir)) {
@@ -469,7 +575,7 @@ ipcMain.handle('updater:detectLatestExe', async () => {
           return { found: true, ...files[0] };
         }
       } catch (err) {
-        console.error('Error al detectar .exe en dist-electron:', err);
+        console.error('Error al detectar .exe en candidate dir:', dir, err);
       }
     }
   }
@@ -623,17 +729,24 @@ ipcMain.handle('updater:publishToGitHub', async (event, params) => {
       return { ok: false, error: 'No se pudo obtener la información del release en GitHub.' };
     }
 
-    // 3. Si ya existía un asset con el mismo nombre, eliminarlo primero para reemplazarlo limpiamente
-    if (Array.isArray(release.assets)) {
-      const existingAsset = release.assets.find(a => a.name === fileName);
-      if (existingAsset) {
-        notifyProgress('cleaning', 20, `Reemplazando binario anterior (${fileName})...`);
-        await githubApiRequest({
-          hostname: 'api.github.com',
-          path: `/repos/${owner}/${repo}/releases/assets/${existingAsset.id}`,
-          method: 'DELETE'
-        });
-      }
+    // 3. Obtener assets actuales del release y eliminar duplicados con el mismo nombre
+    notifyProgress('cleaning', 15, `Verificando assets existentes...`);
+    const assetsRes = await githubApiRequest({
+      hostname: 'api.github.com',
+      path: `/repos/${owner}/${repo}/releases/${release.id}/assets`,
+      method: 'GET'
+    });
+    const existingAssets = Array.isArray(assetsRes.data) ? assetsRes.data : [];
+    const existingAsset = existingAssets.find(a => a.name === fileName);
+    if (existingAsset) {
+      notifyProgress('cleaning', 20, `Eliminando binario anterior (${fileName})...`);
+      await githubApiRequest({
+        hostname: 'api.github.com',
+        path: `/repos/${owner}/${repo}/releases/assets/${existingAsset.id}`,
+        method: 'DELETE'
+      });
+      // Pequeña pausa para que GitHub procese el DELETE antes de subir
+      await new Promise(r => setTimeout(r, 1500));
     }
 
     notifyProgress('uploading', 25, `Iniciando subida de ${fileName} (${(totalBytes / (1024 * 1024)).toFixed(1)} MB)...`);

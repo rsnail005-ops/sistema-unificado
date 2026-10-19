@@ -135,9 +135,13 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
     try {
       if (typeof window !== 'undefined' && (window as any).require) {
         const { ipcRenderer } = (window as any).require('electron');
-        const res = await ipcRenderer.invoke('updater:detectLatestExe');
+        const preferredPath = localStorage.getItem('mpv_last_exe_path') || undefined;
+        const res = await ipcRenderer.invoke('updater:detectLatestExe', { preferredPath });
         if (res && res.found) {
           setDetectedExe(res);
+          if (res.filePath) {
+            localStorage.setItem('mpv_last_exe_path', res.filePath);
+          }
         } else {
           setDetectedExe({ found: false });
         }
@@ -156,6 +160,9 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
         const res = await ipcRenderer.invoke('updater:selectExe');
         if (res && res.found) {
           setDetectedExe(res);
+          if (res.filePath) {
+            localStorage.setItem('mpv_last_exe_path', res.filePath);
+          }
         }
       }
     } catch (err) {
@@ -302,6 +309,9 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
     borderRadius: 10, color: '#e2e8f0', fontSize: 14,
     outline: 'none', boxSizing: 'border-box',
     transition: 'border-color 0.2s',
+    userSelect: 'text',
+    WebkitUserSelect: 'text',
+    ['WebkitAppRegion' as any]: 'no-drag',
   };
 
   const labelStyle: React.CSSProperties = {

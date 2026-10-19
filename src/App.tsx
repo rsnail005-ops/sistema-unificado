@@ -18,6 +18,7 @@ import { DeveloperPanel } from './components/DeveloperPanel';
 import { StorageService } from './services/storage';
 import { AuthVaultService } from './services/authVault';
 import { UpdateService, AppRelease } from './services/updateService';
+import { RealtimeService } from './services/realtimeService';
 import { UsuarioSesion, isDeveloperSesion } from './types';
 
 export const App: React.FC = () => {
@@ -44,6 +45,29 @@ export const App: React.FC = () => {
       window.removeEventListener('mpv-session-updated', handleSessionChange);
     };
   }, []);
+
+  // Realtime: iniciar WebSocket cuando hay sesión, detener al cerrar
+  useEffect(() => {
+    if (!sesion) {
+      RealtimeService.detener();
+      return;
+    }
+
+    // Iniciar suscripción Realtime y forzar descarga inicial desde servidor
+    RealtimeService.iniciar();
+    RealtimeService.sincronizarDesdeServidor();
+
+    // Al recuperar conexión a internet → resincronizar desde servidor
+    const handleOnline = () => {
+      RealtimeService.iniciar();
+      RealtimeService.sincronizarDesdeServidor();
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [sesion?.cedula]);
 
   // Verificar actualizaciones cada vez que hay sesión activa
   useEffect(() => {

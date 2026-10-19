@@ -48,7 +48,7 @@ export const EventosView: React.FC<EventosViewProps> = ({ sesion, initialOpenFor
   const [tipoActividad, setTipoActividad] = useState<'Deportiva' | 'Cultural' | 'Preventiva' | 'Formativa' | 'Comunitaria'>('Deportiva');
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [lugar, setLugar] = useState('');
-  const [asistentesEstimados, setAsistentesEstimados] = useState<number>(50);
+  const [asistentesEstimados, setAsistentesEstimados] = useState<string>('50');
   const [coordinadorResponsable, setCoordinadorResponsable] = useState(sesion ? `${sesion.nombres} ${sesion.apellidos}` : '');
   const [descripcion, setDescripcion] = useState('');
 
@@ -241,7 +241,8 @@ export const EventosView: React.FC<EventosViewProps> = ({ sesion, initialOpenFor
                     <input
                       type="number"
                       value={asistentesEstimados}
-                      onChange={e => setAsistentesEstimados(Number(e.target.value))}
+                      onChange={e => setAsistentesEstimados(e.target.value)}
+                      placeholder="50"
                       className="form-input"
                     />
                   </div>

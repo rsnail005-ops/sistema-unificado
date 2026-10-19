@@ -11,7 +11,10 @@ import {
   Printer, 
   Calendar as CalendarIcon,
   Clock,
-  Sparkles
+  Sparkles,
+  CloudUpload,
+  Trash2,
+  RefreshCw
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { LOGO_OFICIAL } from '../assets/logos';
@@ -38,6 +41,31 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [comprobanteModal, setComprobanteModal] = useState<PagoRegistro | null>(null);
+  const [pagoToDelete, setPagoToDelete] = useState<PagoRegistro | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [toastMsg, setToastMsg] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
+
+  const handleSincronizarServidor = async () => {
+    setIsSyncing(true);
+    try {
+      await StorageService.procesarColaSincronizacion();
+      setPagos(StorageService.obtenerPagos());
+      setToastMsg({ tipo: 'ok', texto: '¡Pagos y registros sincronizados exitosamente con el servidor Supabase!' });
+    } catch (err: any) {
+      setToastMsg({ tipo: 'err', texto: `Error sincronizando: ${err.message || 'Sin conexión'}` });
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setToastMsg(null), 4000);
+    }
+  };
+
+  const handleConfirmarEliminarPago = () => {
+    if (!pagoToDelete) return;
+    StorageService.eliminarPago(pagoToDelete.id, sesion.cedula);
+    setToastMsg({ tipo: 'ok', texto: `Pago de ${pagoToDelete.usuario_nombre} eliminado correctamente.` });
+    setPagoToDelete(null);
+    setTimeout(() => setToastMsg(null), 3500);
+  };
 
   // Helper para sumar días a una fecha
   const calcularFechaOffset = (dias: number) => {
@@ -53,7 +81,7 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
   const [formFechaVencimiento, setFormFechaVencimiento] = useState<string>(calcularFechaOffset(30));
   const [formPlan, setFormPlan] = useState<PlanPago>('Mensual');
   const [formServicio, setFormServicio] = useState<ServicioPago>('Servicio de Maquinas Musculacion');
-  const [formMonto, setFormMonto] = useState<number>(1850.00);
+  const [formMonto, setFormMonto] = useState<string>('1850.00');
   const [formMetodo, setFormMetodo] = useState<MetodoPago>('Punto de Venta');
   const [formReferencia, setFormReferencia] = useState('');
   const [formObs, setFormObs] = useState('');
@@ -200,14 +228,36 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
           </div>
         </div>
 
-        <button
-          className="btn btn-primary"
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: 600 }}
-          onClick={() => setIsModalOpen(true)}
-        >
-          <Plus size={17} />
-          <span>Registrar Nuevo Pago / Membresía</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={handleSincronizarServidor}
+            disabled={isSyncing}
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              padding: '10px 18px', 
+              fontWeight: 600,
+              backgroundColor: 'rgba(56, 189, 248, 0.1)',
+              borderColor: 'rgba(56, 189, 248, 0.3)',
+              color: '#38bdf8',
+              cursor: isSyncing ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <CloudUpload size={17} className={isSyncing ? 'spin' : ''} />
+            <span>{isSyncing ? 'Sincronizando...' : 'Enviar Pagos al Servidor'}</span>
+          </button>
+
+          <button
+            className="btn btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: 600 }}
+            onClick={() => setIsModalOpen(true)}
+          >
+            <Plus size={17} />
+            <span>Registrar Nuevo Pago / Membresía</span>
+          </button>
+        </div>
       </div>
 
       {/* Tarjetas KPI de Membresías con los 3 Colores Oficiales */}
@@ -377,13 +427,23 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
                         </span>
                       </td>
                       <td>
-                        <button
-                          className="btn-icon"
-                          title="Ver / Imprimir Comprobante Oficial"
-                          onClick={() => setComprobanteModal(p)}
-                        >
-                          <Receipt size={17} style={{ color: 'var(--accent-amber)' }} />
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <button
+                            className="btn-icon"
+                            title="Ver / Imprimir Comprobante Oficial"
+                            onClick={() => setComprobanteModal(p)}
+                          >
+                            <Receipt size={17} style={{ color: 'var(--accent-amber)' }} />
+                          </button>
+                          <button
+                            className="btn-icon"
+                            title="Eliminar Pago"
+                            onClick={() => setPagoToDelete(p)}
+                            style={{ color: '#f87171' }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -635,7 +695,8 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
                     step="0.01"
                     className="form-input"
                     value={formMonto}
-                    onChange={e => setFormMonto(parseFloat(e.target.value) || 0)}
+                    onChange={e => setFormMonto(e.target.value)}
+                    placeholder="0.00"
                     required
                   />
                   <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '3px' }}>
@@ -825,6 +886,93 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL CONFIRMACIÓN ELIMINAR PAGO                          */}
+      {/* ========================================================= */}
+      {pagoToDelete && (
+        <div className="modal-overlay" onClick={() => setPagoToDelete(null)}>
+          <div className="modal-content" style={{ maxWidth: '440px', textAlign: 'center', padding: '24px' }} onClick={e => e.stopPropagation()}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              color: '#f87171',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px auto'
+            }}>
+              <Trash2 size={26} />
+            </div>
+
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#ffffff', marginBottom: '8px' }}>
+              ¿Eliminar este Pago?
+            </h3>
+            <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '16px', lineHeight: 1.5 }}>
+              Estás a punto de eliminar el pago de <strong>Bs. {Number(pagoToDelete.monto_bs || 0).toFixed(2)}</strong> registrado a nombre de <strong>{pagoToDelete.usuario_nombre}</strong> ({pagoToDelete.usuario_cedula}).
+            </p>
+
+            <div style={{
+              background: 'rgba(10, 15, 29, 0.7)',
+              border: '1px solid #1e2d4a',
+              borderRadius: '10px',
+              padding: '12px',
+              fontSize: '12px',
+              color: '#94a3b8',
+              textAlign: 'left',
+              marginBottom: '20px'
+            }}>
+              <div><strong>Plan:</strong> {pagoToDelete.plan}</div>
+              <div><strong>Referencia:</strong> {pagoToDelete.referencia}</div>
+              <div><strong>Fecha:</strong> {pagoToDelete.fecha_pago}</div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+                onClick={() => setPagoToDelete(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn btn-danger"
+                style={{ flex: 1, backgroundColor: '#dc2626', color: '#ffffff' }}
+                onClick={handleConfirmarEliminarPago}
+              >
+                Sí, Eliminar Pago
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div style={{
+          position: 'fixed',
+          top: '24px',
+          right: '24px',
+          zIndex: 9999,
+          padding: '12px 20px',
+          borderRadius: '12px',
+          background: toastMsg.tipo === 'ok' ? 'linear-gradient(135deg, #059669, #047857)' : 'linear-gradient(135deg, #dc2626, #b91c1c)',
+          color: '#ffffff',
+          fontWeight: 600,
+          fontSize: '13.5px',
+          boxShadow: '0 12px 30px rgba(0, 0, 0, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          animation: 'slideIn 0.3s ease-out'
+        }}>
+          {toastMsg.tipo === 'ok' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+          <span>{toastMsg.texto}</span>
         </div>
       )}
     </div>

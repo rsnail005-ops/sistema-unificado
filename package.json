@@ -1,6 +1,6 @@
 {
   "name": "movimiento-paz-vida-desktop",
-  "version": "1.0.0-beta",
+  "version": "1.5.3",
   "description": "Aplicación Nacional Ejecutable de Almacenamiento de Datos - Movimiento por la Paz y la Vida en Venezuela",
   "main": "electron/main.cjs",
   "author": "Movimiento por la Paz y la Vida",

@@ -1,20 +1,24 @@
 import React, { useState } from 'react';
-import { Download, RefreshCw, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
-import { AppRelease, UpdateService, APP_VERSION } from '../services/updateService';
+import { Download, RefreshCw, AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react';
+import { AppRelease, UpdateService } from '../services/updateService';
+
 
 interface UpdateModalProps {
   release: AppRelease;
   /** Si es true el usuario NO puede cerrar el modal (actualización obligatoria) */
   obligatoria: boolean;
+  onClose?: () => void;
 }
 
-type Fase = 'aviso' | 'descargando' | 'listo' | 'error';
+type Fase = 'aviso' | 'descargando' | 'listo' | 'instalando' | 'error';
 
-export const UpdateModal: React.FC<UpdateModalProps> = ({ release, obligatoria }) => {
+export const UpdateModal: React.FC<UpdateModalProps> = ({ release, obligatoria, onClose }) => {
   const [fase, setFase] = useState<Fase>('aviso');
   const [progreso, setProgreso] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const [installerPath, setInstallerPath] = useState('');
+
+  const versionInstalada = UpdateService.obtenerVersionInstalada();
 
   const iniciarDescarga = async () => {
     setFase('descargando');
@@ -33,8 +37,13 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ release, obligatoria }
   };
 
   const instalarAhora = async () => {
+    setFase('instalando');
+    // Persistir la versión que se va a instalar para que al reiniciar
+    // el sistema reconozca inmediatamente la nueva versión aplicada
+    UpdateService.marcarVersionInstalada(release.version);
     await UpdateService.lanzarInstalador(installerPath);
   };
+
 
   return (
     <div style={{
@@ -62,6 +71,24 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ release, obligatoria }
           background: 'radial-gradient(circle, rgba(96,165,250,0.15) 0%, transparent 70%)',
           pointerEvents: 'none',
         }} />
+
+        {/* Botón cerrar si no es obligatoria */}
+        {!obligatoria && onClose && (
+          <button
+            onClick={onClose}
+            style={{
+              position: 'absolute', top: 16, right: 16,
+              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '50%', width: 32, height: 32,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', color: '#94a3b8', transition: 'all 0.2s',
+              zIndex: 10
+            }}
+            title="Cerrar y actualizar más tarde"
+          >
+            <X size={16} />
+          </button>
+        )}
 
         {/* Encabezado */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
@@ -140,6 +167,24 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ release, obligatoria }
           </button>
         )}
 
+        {/* Fase: aviso y no obligatoria: botón posponer */}
+        {fase === 'aviso' && !obligatoria && onClose && (
+          <button
+            onClick={onClose}
+            style={{
+              width: '100%', marginTop: '10px', padding: '10px',
+              background: 'transparent',
+              border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, cursor: 'pointer',
+              color: '#94a3b8', fontSize: 13, fontWeight: 500,
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            Recordarme más tarde
+          </button>
+        )}
+
         {/* Fase: descargando */}
         {fase === 'descargando' && (
           <div>
@@ -166,7 +211,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ release, obligatoria }
           </div>
         )}
 
-        {/* Fase: listo */}
+        {/* Fase: listo para instalar */}
         {fase === 'listo' && (
           <div>
             <div style={{
@@ -191,8 +236,21 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ release, obligatoria }
               }}
             >
               <RefreshCw size={18} />
-              Instalar y reiniciar
+              Reemplazar ejecutable y reiniciar
             </button>
+          </div>
+        )}
+
+        {/* Fase: instalando / reemplazando */}
+        {fase === 'instalando' && (
+          <div style={{ textAlign: 'center', padding: '12px 0' }}>
+            <Loader2 size={32} color="#10b981" style={{ animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
+            <h3 style={{ margin: '0 0 6px 0', fontSize: 16, color: '#f1f5f9' }}>
+              Reemplazando ejecutable...
+            </h3>
+            <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+              La aplicación se reiniciará automáticamente con la nueva versión v{release.version}.
+            </p>
           </div>
         )}
 
@@ -222,7 +280,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ release, obligatoria }
         )}
 
         <p style={{ margin: '16px 0 0 0', fontSize: 11, color: '#475569', textAlign: 'center' }}>
-          Versión instalada: v{APP_VERSION} → v{release.version}
+          Versión instalada: v{versionInstalada} → v{release.version}
         </p>
 
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
