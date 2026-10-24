@@ -9,7 +9,6 @@ import {
   MapPin, 
   CheckCircle, 
   AlertCircle,
-  FileSpreadsheet,
   Calendar as CalendarIcon
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
@@ -47,24 +46,6 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
     setRegistros(StorageService.obtenerRegistros('persona', selectedEstadoFilter));
   };
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const buffer = evt.target?.result as ArrayBuffer;
-      if (buffer) {
-        const res = StorageService.importarDatosDesdeExcel(buffer, sesion?.cedula || 'V-00000000');
-        alert(res.mensaje);
-        recargarRegistros();
-      }
-    };
-    reader.readAsArrayBuffer(file);
-    e.target.value = '';
-  };
 
   useEffect(() => {
     recargarRegistros();
@@ -299,30 +280,14 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
         <div>
           <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Users size={26} style={{ color: 'var(--accent-blue-light)' }} />
-            <span>Padrón de Beneficiarios y Atletas</span>
+            <span>Registro de Atletas y Usuarios</span>
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0 }}>
-            Registro de deportistas, voceros y control de estado de membresías de la Gran Base de Paz.
+            Control y registro de deportistas, usuarios y membresías de la Gran Base de Paz.
           </p>
         </div>
 
         <div style={{ display: 'flex', gap: '12px' }}>
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept=".xlsx,.xls"
-            style={{ display: 'none' }}
-            onChange={handleFileImport}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="btn btn-secondary"
-            title="Importar usuarios directamente desde el archivo Excel oficial"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-          >
-            <FileSpreadsheet size={16} style={{ color: 'var(--accent-amber)' }} />
-            <span>Importar Excel</span>
-          </button>
           <button onClick={handleExportarCSV} className="btn btn-secondary">
             <Download size={15} />
             <span>Exportar CSV</span>

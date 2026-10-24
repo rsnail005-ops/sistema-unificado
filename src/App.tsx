@@ -9,7 +9,7 @@ import { PersonasView } from './components/PersonasView';
 import { EventosView } from './components/EventosView';
 import { DocumentosView } from './components/DocumentosView';
 import { SyncQueueView } from './components/SyncQueueView';
-import { AuditView } from './components/AuditView';
+import { ImportadorView } from './components/ImportadorView';
 import { AuthModal } from './components/AuthModal';
 import { SettingsModal } from './components/SettingsModal';
 import { LoginScreen } from './components/LoginScreen';
@@ -20,13 +20,32 @@ import { AuthVaultService } from './services/authVault';
 import { UpdateService, AppRelease } from './services/updateService';
 import { RealtimeService } from './services/realtimeService';
 import { UsuarioSesion, isDeveloperSesion } from './types';
+import { APP_VERSION } from './version';
+
+const LAST_ACTIVE_VERSION_KEY = 'mpv_last_active_version';
+
+function obtenerSesionInicial(): UsuarioSesion | null {
+  try {
+    const lastVersion = localStorage.getItem(LAST_ACTIVE_VERSION_KEY);
+    // Si la versión compilada difiere de la última registrada, se actualizó o distribuyó
+    // una nueva versión: forzar cierre de sesión obligatorio
+    if (lastVersion !== APP_VERSION) {
+      StorageService.cerrarSesion();
+      localStorage.removeItem('mpv_supabase_auth_token');
+      localStorage.removeItem('mpv_supabase_refresh_token');
+      localStorage.setItem(LAST_ACTIVE_VERSION_KEY, APP_VERSION);
+      return null;
+    }
+  } catch {}
+  return StorageService.obtenerSesion();
+}
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [autoOpenAction, setAutoOpenAction] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [sesion, setSesion] = useState<UsuarioSesion | null>(StorageService.obtenerSesion());
+  const [sesion, setSesion] = useState<UsuarioSesion | null>(obtenerSesionInicial);
 
   // Estado del sistema de actualizaciones
   const [pendingRelease, setPendingRelease] = useState<AppRelease | null>(null);
@@ -87,7 +106,18 @@ export const App: React.FC = () => {
     checkUpdate();
     // Verificar también cada 30 minutos mientras la app está abierta
     const intervalo = setInterval(checkUpdate, 30 * 60 * 1000);
-    return () => clearInterval(intervalo);
+
+    // Escuchar evento global disparado desde el botón del header
+    const handleTriggerModal = (e: Event) => {
+      const release = (e as CustomEvent).detail as AppRelease;
+      if (release) setPendingRelease(release);
+    };
+    window.addEventListener('mpv-trigger-update-modal', handleTriggerModal);
+
+    return () => {
+      clearInterval(intervalo);
+      window.removeEventListener('mpv-trigger-update-modal', handleTriggerModal);
+    };
   }, [sesion?.cedula]);
 
   const handleNavigate = (tab: TabType, action?: string) => {
@@ -109,6 +139,7 @@ export const App: React.FC = () => {
         <UpdateModal
           release={pendingRelease}
           obligatoria={pendingRelease.obligatoria}
+          onClose={pendingRelease.obligatoria ? undefined : () => setPendingRelease(null)}
         />
       )}
 
@@ -118,6 +149,7 @@ export const App: React.FC = () => {
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onNavigateSync={() => setActiveTab('sync')}
+        onOpenUpdateModal={(release) => setPendingRelease(release)}
       />
 
       {/* Área de Trabajo */}
@@ -145,7 +177,7 @@ export const App: React.FC = () => {
           )}
           {activeTab === 'documentos' && <DocumentosView sesion={sesion} />}
           {activeTab === 'sync' && <SyncQueueView sesion={sesion} />}
-          {activeTab === 'auditoria' && <AuditView />}
+          {activeTab === 'importador' && <ImportadorView sesion={sesion} />}
           {activeTab === 'developer' && isDeveloperSesion(sesion) && (
             <DeveloperPanel sesion={sesion} />
           )}

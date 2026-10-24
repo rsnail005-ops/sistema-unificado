@@ -53,53 +53,7 @@ export class AuthVaultService {
 
 
 
-  /**
-   * Prueba de conexión y envío de correo de test para validar credenciales SMTP
-   */
-  static async probarConfiguracionSmtp(
-    smtpConfig: { host: string; port: string; user: string; pass: string },
-    correoDestino: string
-  ): Promise<{ exito: boolean; mensaje: string }> {
-    if (!smtpConfig.host || !smtpConfig.user || !smtpConfig.pass) {
-      return { exito: false, mensaje: 'Debe ingresar Host, Usuario y Contraseña para realizar la prueba.' };
-    }
 
-    if (typeof window !== 'undefined' && (window as any).require) {
-      try {
-        const electron = (window as any).require('electron');
-        const res = await electron.ipcRenderer.invoke('mail:sendVerificationCode', {
-          to: correoDestino.trim() || smtpConfig.user.trim(),
-          code: 'TEST-OK',
-          name: 'Operador / Administrador',
-          smtpConfig: {
-            host: smtpConfig.host.trim(),
-            port: smtpConfig.port.trim() || '587',
-            user: smtpConfig.user.trim(),
-            pass: smtpConfig.pass.trim()
-          }
-        });
-
-        if (res && res.success) {
-          return {
-            exito: true,
-            mensaje: `¡Excelente! Servidor SMTP validado. Se envió un correo de prueba a ${correoDestino.trim() || smtpConfig.user.trim()}.`
-          };
-        } else {
-          return {
-            exito: false,
-            mensaje: res.error || 'Error de autenticación o rechazo por parte del servidor SMTP.'
-          };
-        }
-      } catch (err: any) {
-        return { exito: false, mensaje: `Error de ejecución: ${err.message}` };
-      }
-    }
-
-    return {
-      exito: false,
-      mensaje: 'La prueba de envío de correo SMTP requiere ejecutar la aplicación en su versión de escritorio compilada (.exe).'
-    };
-  }
 
   /**
    * Autenticación con credenciales almacenadas

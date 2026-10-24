@@ -5,7 +5,7 @@ import {
   Calendar, 
   FileText, 
   RefreshCw, 
-  ShieldAlert, 
+  Zap, 
   FolderLock,
   Building2,
   CreditCard,
@@ -25,7 +25,7 @@ export type TabType =
   | 'eventos' 
   | 'documentos' 
   | 'sync' 
-  | 'auditoria'
+  | 'importador'
   | 'developer';
 
 interface SidebarProps {
@@ -155,11 +155,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, sesio
       </div>
 
       <div
-        className={`nav-item ${activeTab === 'auditoria' ? 'active' : ''}`}
-        onClick={() => setActiveTab('auditoria')}
+        className={`nav-item ${activeTab === 'importador' ? 'active' : ''}`}
+        onClick={() => setActiveTab('importador')}
       >
-        <ShieldAlert size={18} />
-        <span>Auditoría</span>
+        <Zap size={18} style={{ color: '#f59e0b' }} />
+        <span>Importador de Archivos</span>
       </div>
 
       <div style={{

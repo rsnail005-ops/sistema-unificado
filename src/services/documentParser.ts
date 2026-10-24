@@ -120,7 +120,8 @@ export class DocumentParserService {
 
       metadata = {
         paginas_aprox: (raw.match(/\/Type\s*\/Page[^s]/g) || []).length || 1,
-        autor: authorMatch ? authorMatch[1] : 'Movimiento por la Paz y la Vida'
+        autor: authorMatch ? authorMatch[1] : 'Sistema Unificado de Usuarios GNP'
+
       };
     } else {
       textoExtraido = `Archivo binario: ${file.name}`;

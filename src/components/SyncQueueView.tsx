@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, CheckCircle, AlertTriangle, Clock, Play, Server, Zap, Activity, ArrowUpCircle, ArrowDownCircle, Database, Globe, Wifi, WifiOff, XCircle, FileText, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { RefreshCw, CheckCircle, AlertTriangle, Clock, Play, Server, Zap, Activity, Database, Globe, Wifi, WifiOff, XCircle } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { SupabaseService, ServerStatusInfo, SyncResult } from '../services/supabase';
 import { SyncItem, UsuarioSesion } from '../types';
@@ -8,14 +8,6 @@ interface SyncQueueViewProps {
   sesion: UsuarioSesion | null;
 }
 
-interface SyncLogEntry {
-  id: string;
-  tipo: 'sync' | 'server_check' | 'error' | 'info' | 'connection';
-  mensaje: string;
-  hora: string;
-  detalles?: string;
-  icono?: 'success' | 'error' | 'warning' | 'info' | 'upload' | 'download';
-}
 
 export const SyncQueueView: React.FC<SyncQueueViewProps> = ({ sesion }) => {
   const [queue, setQueue] = useState<SyncItem[]>(() => StorageService.obtenerColaSync());
@@ -23,18 +15,9 @@ export const SyncQueueView: React.FC<SyncQueueViewProps> = ({ sesion }) => {
   const [activeConflict, setActiveConflict] = useState<SyncItem | null>(null);
   const [serverStatus, setServerStatus] = useState<ServerStatusInfo | null>(null);
   const [isCheckingServer, setIsCheckingServer] = useState(false);
-  const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([]);
-  const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null);
-  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<SyncItem | null>(null);
 
-  const addLogEntry = useCallback((entry: Omit<SyncLogEntry, 'id' | 'hora'>) => {
-    setSyncLog(prev => [{
-      ...entry,
-      id: 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
-      hora: new Date().toLocaleTimeString('es-VE')
-    }, ...prev].slice(0, 100)); // Keep last 100 entries
-  }, []);
+
 
   const recargar = () => {
     setQueue(StorageService.obtenerColaSync());
@@ -43,42 +26,10 @@ export const SyncQueueView: React.FC<SyncQueueViewProps> = ({ sesion }) => {
   useEffect(() => {
     window.addEventListener('mpv-sync-updated', recargar);
     window.addEventListener('mpv-data-updated', recargar);
-
-    // Listen for sync completion events
-    const handleSyncCompleted = (e: Event) => {
-      const detail = (e as CustomEvent).detail as SyncResult;
-      if (detail) {
-        setLastSyncResult(detail);
-        // Add summary log
-        addLogEntry({
-          tipo: 'sync',
-          mensaje: detail.mensaje,
-          icono: detail.errores > 0 ? 'error' : 'success',
-          detalles: detail.detalles.map(d => 
-            `${d.hora} — [${d.operacion}] ${d.tipo || 'registro'}: ${d.resumen}${d.error ? ' → ⚠ ' + d.error : ' → ✓ OK'}`
-          ).join('\n')
-        });
-        // Add individual detail entries
-        for (const d of detail.detalles) {
-          addLogEntry({
-            tipo: d.exito ? 'sync' : 'error',
-            mensaje: `[${d.operacion}] ${d.resumen}`,
-            icono: d.exito ? 'upload' : 'error',
-            detalles: d.error || `Enviado exitosamente al servidor a las ${d.hora}`
-          });
-        }
-      }
-    };
-
-    window.addEventListener('mpv-sync-completed', handleSyncCompleted);
-
-    // Initial server check
     checkServerStatus();
-
     return () => {
       window.removeEventListener('mpv-sync-updated', recargar);
       window.removeEventListener('mpv-data-updated', recargar);
-      window.removeEventListener('mpv-sync-completed', handleSyncCompleted);
     };
   }, []);
 
@@ -90,26 +41,13 @@ export const SyncQueueView: React.FC<SyncQueueViewProps> = ({ sesion }) => {
 
   const checkServerStatus = async () => {
     setIsCheckingServer(true);
-    addLogEntry({ tipo: 'server_check', mensaje: 'Verificando conexión con el servidor Supabase...', icono: 'info' });
-    
     const status = await SupabaseService.checkConnection();
     setServerStatus(status);
     setIsCheckingServer(false);
-
-    addLogEntry({
-      tipo: 'connection',
-      mensaje: status.ok 
-        ? `Servidor en línea (${status.latencyMs}ms) — ${status.version || 'Supabase'}` 
-        : `Servidor no disponible: ${status.message}`,
-      icono: status.ok ? 'success' : 'error',
-      detalles: `URL: ${status.url}\nEstado: ${status.status}\nLatencia: ${status.latencyMs}ms\n${status.version ? 'Versión: ' + status.version : ''}`
-    });
   };
 
   const handleManualSync = async () => {
     setIsProcessing(true);
-    addLogEntry({ tipo: 'info', mensaje: `Iniciando sincronización de ${pendientes.length} registro(s) pendiente(s)...`, icono: 'info' });
-    
     await StorageService.procesarColaSincronizacion();
     setQueue(StorageService.obtenerColaSync());
     setIsProcessing(false);
@@ -118,26 +56,11 @@ export const SyncQueueView: React.FC<SyncQueueViewProps> = ({ sesion }) => {
   const handleResolver = (decision: 'local_gana' | 'servidor_gana') => {
     if (!activeConflict) return;
     StorageService.resolverConflicto(activeConflict.id, decision);
-    addLogEntry({
-      tipo: 'info',
-      mensaje: `Conflicto resuelto: ${decision === 'local_gana' ? 'Prevaleció versión local' : 'Prevaleció versión del servidor'}`,
-      icono: 'success',
-      detalles: `Registro: ${activeConflict.registro_id}`
-    });
     setQueue(StorageService.obtenerColaSync());
     setActiveConflict(null);
   };
 
-  const getLogIcon = (icono?: string) => {
-    switch (icono) {
-      case 'success': return <CheckCircle size={14} style={{ color: '#34d399' }} />;
-      case 'error': return <XCircle size={14} style={{ color: '#f87171' }} />;
-      case 'warning': return <AlertTriangle size={14} style={{ color: '#fbbf24' }} />;
-      case 'upload': return <ArrowUpCircle size={14} style={{ color: '#60a5fa' }} />;
-      case 'download': return <ArrowDownCircle size={14} style={{ color: '#a78bfa' }} />;
-      default: return <Activity size={14} style={{ color: '#94a3b8' }} />;
-    }
-  };
+
 
   return (
     <div>
@@ -311,102 +234,7 @@ export const SyncQueueView: React.FC<SyncQueueViewProps> = ({ sesion }) => {
         </div>
       </div>
 
-      {/* ═══════════════ REGISTRO DE ACTIVIDAD (SYNC LOG) ═══════════════ */}
-      <div className="card" style={{ marginBottom: '20px', padding: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <FileText size={18} style={{ color: '#60a5fa' }} />
-            <span>Registro de Actividad del Servidor</span>
-          </h3>
-          {syncLog.length > 0 && (
-            <button 
-              onClick={() => setSyncLog([])} 
-              className="btn btn-secondary" 
-              style={{ padding: '4px 10px', fontSize: '11px' }}
-            >
-              Limpiar Log
-            </button>
-          )}
-        </div>
 
-        <div style={{
-          maxHeight: '320px',
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '2px',
-          scrollbarWidth: 'thin',
-          scrollbarColor: 'rgba(255,255,255,0.1) transparent',
-        }}>
-          {syncLog.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 16px', color: '#475569' }}>
-              <Activity size={28} style={{ margin: '0 auto 10px', display: 'block', opacity: 0.5 }} />
-              <div style={{ fontSize: '13px' }}>No hay actividad reciente.</div>
-              <div style={{ fontSize: '11px', marginTop: '4px' }}>
-                Sincronice datos o verifique el servidor para ver el registro.
-              </div>
-            </div>
-          ) : (
-            syncLog.map((entry) => (
-              <div
-                key={entry.id}
-                onClick={() => setExpandedLogId(expandedLogId === entry.id ? null : entry.id)}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  cursor: entry.detalles ? 'pointer' : 'default',
-                  background: expandedLogId === entry.id ? 'rgba(255,255,255,0.04)' : 'transparent',
-                  transition: 'background 0.15s ease',
-                }}
-                onMouseEnter={e => { if (entry.detalles) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-                onMouseLeave={e => { if (expandedLogId !== entry.id) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {getLogIcon(entry.icono)}
-                  <span style={{ 
-                    fontSize: '10px', 
-                    color: '#64748b', 
-                    fontFamily: 'monospace', 
-                    minWidth: '85px',
-                    flexShrink: 0
-                  }}>
-                    {entry.hora}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#e2e8f0', flex: 1 }}>
-                    {entry.mensaje}
-                  </span>
-                  {entry.detalles && (
-                    <Eye size={12} style={{ color: '#475569', flexShrink: 0 }} />
-                  )}
-                </div>
-
-                {/* Expandable details */}
-                {expandedLogId === entry.id && entry.detalles && (
-                  <div style={{
-                    marginTop: '8px',
-                    marginLeft: '24px',
-                    padding: '10px 14px',
-                    background: 'rgba(0,0,0,0.25)',
-                    borderRadius: '6px',
-                    borderLeft: '3px solid rgba(96,165,250,0.4)',
-                    fontSize: '11px',
-                    color: '#94a3b8',
-                    fontFamily: 'monospace',
-                    whiteSpace: 'pre-wrap',
-                    lineHeight: '1.6',
-                    maxHeight: '150px',
-                    overflowY: 'auto'
-                  }}>
-                    {entry.detalles}
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
 
       {/* ═══════════════ BANDEJA DE CONFLICTOS ACTIVOS ═══════════════ */}
       {conflictos.length > 0 && (
@@ -579,120 +407,7 @@ export const SyncQueueView: React.FC<SyncQueueViewProps> = ({ sesion }) => {
         </div>
       )}
 
-      {/* ═══════════════ TABLA DE DATOS ENVIADOS POR HORA ═══════════════ */}
-      <div className="card" style={{ padding: '20px' }}>
-        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-          <Database size={18} style={{ color: '#a78bfa' }} />
-          <span>Datos Enviados al Servidor (por hora)</span>
-          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 400, marginLeft: 'auto' }}>
-            {queue.length} registro(s) en cola total
-          </span>
-        </h3>
 
-        <div className="table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Operación</th>
-                <th>Tipo</th>
-                <th>Resumen</th>
-                <th>Hora Creado</th>
-                <th>Hora Sincronizado</th>
-                <th>Estado</th>
-                <th>Detalle</th>
-              </tr>
-            </thead>
-            <tbody>
-              {queue.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: '#64748b' }}>
-                    No hay elementos en la cola.
-                  </td>
-                </tr>
-              ) : (
-                queue.map(item => (
-                  <tr key={item.id}>
-                    <td>
-                      <span style={{
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        background: item.operacion === 'INSERT' ? 'rgba(16, 185, 129, 0.2)' : item.operacion === 'UPDATE' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                        color: item.operacion === 'INSERT' ? '#34d399' : item.operacion === 'UPDATE' ? '#60a5fa' : '#f87171'
-                      }}>
-                        {item.operacion}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
-                        {item.tipo_entidad || 'registro'}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '12px', color: '#e2e8f0', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                        {item.resumen || item.registro_id.slice(0, 12) + '...'}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{ fontFamily: 'monospace', fontSize: '11px', color: '#94a3b8' }}>
-                        {new Date(item.creado_en).toLocaleTimeString('es-VE')}
-                      </span>
-                    </td>
-                    <td>
-                      {item.hora_sincronizado ? (
-                        <span style={{ fontFamily: 'monospace', fontSize: '11px', color: '#34d399' }}>
-                          {new Date(item.hora_sincronizado).toLocaleTimeString('es-VE')}
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '11px', color: '#475569' }}>—</span>
-                      )}
-                    </td>
-                    <td>
-                      {item.estado === 'sincronizado' && (
-                        <span className="status-pill status-online" style={{ padding: '2px 8px', fontSize: '11px' }}>
-                          ✓ Sincronizado
-                        </span>
-                      )}
-                      {item.estado === 'pendiente' && (
-                        <span className="status-pill status-syncing" style={{ padding: '2px 8px', fontSize: '11px' }}>
-                          Pendiente
-                        </span>
-                      )}
-                      {item.estado === 'sincronizando' && (
-                        <span className="status-pill status-syncing" style={{ padding: '2px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <RefreshCw size={10} className="animate-spin" />
-                          Enviando...
-                        </span>
-                      )}
-                      {item.estado === 'conflicto' && (
-                        <span className="status-pill status-offline" style={{ padding: '2px 8px', fontSize: '11px' }}>
-                          Conflicto
-                        </span>
-                      )}
-                      {item.estado === 'error' && (
-                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, background: 'rgba(239,68,68,0.2)', color: '#f87171' }}>
-                          ✕ Error
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <button
-                        onClick={() => setDetailItem(item)}
-                        className="btn btn-secondary"
-                        style={{ padding: '3px 8px', fontSize: '10px' }}
-                        title="Ver detalle completo"
-                      >
-                        <Eye size={12} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 };

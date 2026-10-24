@@ -48,9 +48,13 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
   const handleSincronizarServidor = async () => {
     setIsSyncing(true);
     try {
-      await StorageService.procesarColaSincronizacion();
+      const res = await StorageService.procesarColaSincronizacion();
       setPagos(StorageService.obtenerPagos());
-      setToastMsg({ tipo: 'ok', texto: '¡Pagos y registros sincronizados exitosamente con el servidor Supabase!' });
+      if (res.errores > 0) {
+        setToastMsg({ tipo: 'err', texto: `Sincronización: ${res.exitosos} enviado(s), ${res.errores} con error.` });
+      } else {
+        setToastMsg({ tipo: 'ok', texto: `¡Sincronización exitosa! ${res.exitosos} registro(s) sincronizados con Supabase.` });
+      }
     } catch (err: any) {
       setToastMsg({ tipo: 'err', texto: `Error sincronizando: ${err.message || 'Sin conexión'}` });
     } finally {
@@ -223,7 +227,8 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
               Control de Pagos y Membresías
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0 }}>
-              Gestión de ingresos, vencimientos por calendario y estados de membresía del Movimiento por la Paz y la Vida.
+              Gestión de ingresos, vencimientos por calendario y estados de membresía del Sistema Unificado de Usuarios GNP.
+
             </p>
           </div>
         </div>
@@ -376,7 +381,22 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
                   const badge = getBadgeStyle(estadoActual);
                   return (
                     <tr key={p.id}>
-                      <td style={{ color: '#94a3b8', fontSize: '12px' }}>{p.fecha_pago}</td>
+                      <td style={{ color: '#94a3b8', fontSize: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{p.fecha_pago}</span>
+                          <span
+                            title={p.sincronizado ? 'Sincronizado con Supabase' : 'Pendiente de sincronizar con el servidor'}
+                            style={{
+                              display: 'inline-block',
+                              width: '7px',
+                              height: '7px',
+                              borderRadius: '50%',
+                              backgroundColor: p.sincronizado ? '#10b981' : '#f59e0b',
+                              boxShadow: p.sincronizado ? '0 0 6px rgba(16,185,129,0.7)' : '0 0 6px rgba(245,158,11,0.7)'
+                            }}
+                          />
+                        </div>
+                      </td>
                       <td style={{ fontWeight: 600, color: '#ffffff' }}>{p.usuario_nombre}</td>
                       <td>
                         <span className="badge" style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: '#cbd5e1' }}>
@@ -771,7 +791,7 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
               background: 'radial-gradient(circle at top, rgba(30, 58, 138, 0.25) 0%, rgba(10, 15, 29, 0.98) 100%)',
               textAlign: 'center'
             }}>
-              {/* Logo Oficial del Movimiento por la Paz y la Vida */}
+              {/* Logo Oficial - Sistema Unificado de Usuarios GNP */}
               <div style={{ marginBottom: '14px', textAlign: 'center' }}>
                 <img
                   src={LOGO_OFICIAL}
@@ -782,7 +802,7 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
                   REPÚBLICA BOLIVARIANA DE VENEZUELA
                 </h4>
                 <div style={{ color: '#f59e0b', fontSize: '13px', fontWeight: 700 }}>
-                  MOVIMIENTO POR LA PAZ Y LA VIDA
+                  SISTEMA UNIFICADO DE USUARIOS GNP
                 </div>
                 <div style={{ color: '#94a3b8', fontSize: '11px' }}>
                   Gran Base de Paz • Gimnasio Vertical

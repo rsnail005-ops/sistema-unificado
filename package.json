@@ -1,9 +1,9 @@
 {
   "name": "movimiento-paz-vida-desktop",
   "version": "1.5.3",
-  "description": "Aplicación Nacional Ejecutable de Almacenamiento de Datos - Movimiento por la Paz y la Vida en Venezuela",
+  "description": "Sistema Unificado de Usuarios GNP - Aplicación Nacional de Gestión",
   "main": "electron/main.cjs",
-  "author": "Movimiento por la Paz y la Vida",
+  "author": "GNP - Sistema Unificado de Usuarios",
   "license": "Proprietary",
   "scripts": {
     "dev": "vite",
@@ -23,7 +23,6 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
     "mammoth": "^1.8.0",
-    "nodemailer": "^10.0.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.5.4",
@@ -31,7 +30,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.7.5",
-    "@types/nodemailer": "^8.0.1",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",

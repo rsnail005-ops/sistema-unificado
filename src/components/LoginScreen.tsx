@@ -24,6 +24,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
 
+  const identInputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      identInputRef.current?.focus();
+    }, 120);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -46,7 +55,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div style={{
+    <div className="no-drag" style={{
       width: '100vw',
       height: '100vh',
       display: 'flex',
@@ -110,7 +119,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           <div style={{ textAlign: 'center', marginBottom: '14px' }}>
             <img
               src={LOGO_OFICIAL}
-              alt="Movimiento por la Paz y la Vida"
+              alt="Sistema Unificado de Usuarios GNP"
               style={{
                 width: '96px',
                 height: '96px',
@@ -122,7 +131,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </div>
 
           <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '19px', fontWeight: 800, color: '#ffffff', marginBottom: '4px', letterSpacing: '0.02em' }}>
-            MOVIMIENTO POR LA PAZ Y LA VIDA
+            SISTEMA UNIFICADO DE USUARIOS GNP
           </h2>
           <p style={{ fontSize: '11px', color: 'var(--accent-amber)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Sistema de Gestión Territorial
@@ -138,14 +147,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             <div style={{ position: 'relative' }}>
               <Mail size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#64748b', pointerEvents: 'none' }} />
               <input
+                ref={identInputRef}
                 type="text"
                 required
                 autoFocus
+                tabIndex={1}
                 placeholder="ej: admin@pazyvida.gob.ve o V-00000001"
                 value={loginIdentificador}
                 onChange={e => setLoginIdentificador(e.target.value)}
-                className="form-input"
-                style={{ paddingLeft: '38px', height: '42px', fontSize: '13.5px' }}
+                className="form-input no-drag"
+                style={{
+                  paddingLeft: '38px',
+                  height: '42px',
+                  fontSize: '13.5px',
+                  userSelect: 'text',
+                  WebkitUserSelect: 'text',
+                  pointerEvents: 'auto'
+                }}
               />
             </div>
           </div>
@@ -159,11 +177,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               <input
                 type="password"
                 required
+                tabIndex={2}
                 placeholder="••••••••"
                 value={loginPassword}
                 onChange={e => setLoginPassword(e.target.value)}
-                className="form-input"
-                style={{ paddingLeft: '38px', height: '42px', fontSize: '13.5px' }}
+                className="form-input no-drag"
+                style={{
+                  paddingLeft: '38px',
+                  height: '42px',
+                  fontSize: '13.5px',
+                  userSelect: 'text',
+                  WebkitUserSelect: 'text',
+                  pointerEvents: 'auto'
+                }}
               />
             </div>
           </div>

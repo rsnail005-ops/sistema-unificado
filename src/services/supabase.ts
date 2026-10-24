@@ -386,6 +386,10 @@ export class SupabaseService {
           plan: raw.plan || 'Mensual',
           servicio: raw.servicio || 'Gimnasio',
           monto_bs: Number(raw.monto_bs) || 0,
+          monto_usd: raw.monto_usd != null ? Number(raw.monto_usd) : null,
+          tasa_bcv: raw.tasa_bcv != null ? Number(raw.tasa_bcv) : null,
+          tipo_membresia: raw.tipo_membresia || null,
+          fecha_vencimiento: raw.fecha_vencimiento || null,
           metodo_pago: raw.metodo_pago || 'Punto de Venta',
           referencia: String(raw.referencia || ''),
           estado: raw.estado || 'Solvente',
@@ -396,7 +400,7 @@ export class SupabaseService {
         };
 
       } else if (tableName === 'asistencias') {
-        // Solo columnas exactas de la tabla "asistencias" en Supabase:
+        // Columnas oficiales de la tabla "asistencias" en Supabase:
         // id, usuario_id, usuario_nombre, usuario_cedula, disciplina, fecha, hora_entrada, hora_salida, estado, ubicacion, registrado_por, creado_en
         payload = {
           id: targetUUID,
@@ -412,6 +416,7 @@ export class SupabaseService {
           creado_en: raw.creado_en || new Date().toISOString()
         };
         if (raw.hora_salida) payload.hora_salida = raw.hora_salida;
+        if (raw.tiempo_horas != null) payload.tiempo_horas = Number(raw.tiempo_horas);
 
       } else {
         // Tabla "registros" — schema de 12 columnas oficiales

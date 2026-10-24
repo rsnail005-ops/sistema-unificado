@@ -6,7 +6,7 @@ const { build, Platform } = require('electron-builder');
 
 async function runBuild() {
   console.log('========================================================');
-  console.log(' MOVIMIENTO POR LA PAZ Y LA VIDA - COMPILACIÓN EJECUTABLE');
+  console.log(' SISTEMA UNIFICADO DE USUARIOS GNP - COMPILACIÓN EJECUTABLE');
   console.log('========================================================');
 
   // 1. Compilar Vite

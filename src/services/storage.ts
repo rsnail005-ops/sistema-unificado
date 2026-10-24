@@ -33,12 +33,7 @@ export interface AppConfig {
   modo_manual_offline?: boolean;
   supabase_url?: string;
   supabase_anon_key?: string;
-  verifik_api_key?: string;
   auto_sync: boolean;
-  smtp_host?: string;
-  smtp_port?: string;
-  smtp_user?: string;
-  smtp_pass?: string;
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -46,12 +41,7 @@ const DEFAULT_CONFIG: AppConfig = {
   modo_manual_offline: false,
   auto_sync: true,
   supabase_url: (import.meta as any).env?.VITE_SUPABASE_URL || 'https://oxliwrrrmefuisuzdtpr.supabase.co',
-  supabase_anon_key: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_XE6powc_BwOMu-vh3CY6tQ_OJq3m4Z5',
-  verifik_api_key: '',
-  smtp_host: '',
-  smtp_port: '587',
-  smtp_user: '',
-  smtp_pass: ''
+  supabase_anon_key: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_XE6powc_BwOMu-vh3CY6tQ_OJq3m4Z5'
 };
 
 // Generador universal de identificadores UUID v4 compatible con Supabase y PostgreSQL
@@ -714,6 +704,7 @@ export class StorageService {
         const prevPagosLen = localPagos.length;
         localPagos = localPagos.filter(p => {
           if (!p.id || p.id.startsWith('pago-local-')) return true;
+          if (p.sincronizado === false) return true; // Preservar pagos locales pendientes de subir
           if (pendingPagoIds.has(p.id)) return true; // Preservar pagos pendientes de subir
           if (serverPagoIds.has(p.id)) return true;
           if (p.referencia && serverRefs.has(p.referencia.trim().toUpperCase())) return true;
@@ -770,7 +761,9 @@ export class StorageService {
               fecha_vencimiento: fechaVenc,
               observaciones: obsTexto,
               ubicacion: remote.ubicacion,
-              creado_en: remote.creado_en
+              registrado_por: remote.registrado_por,
+              creado_en: remote.creado_en,
+              sincronizado: true
             });
             nuevosPagos++;
             modificadoPagos = true;
@@ -778,13 +771,22 @@ export class StorageService {
             localPagos[existeIdx] = {
               ...localPagos[existeIdx],
               id: remote.id,
+              usuario_nombre: remote.usuario_nombre || localPagos[existeIdx].usuario_nombre,
+              usuario_cedula: remote.usuario_cedula || localPagos[existeIdx].usuario_cedula,
+              fecha_pago: remote.fecha_pago || localPagos[existeIdx].fecha_pago,
+              plan: remote.plan || localPagos[existeIdx].plan,
+              servicio: remote.servicio || localPagos[existeIdx].servicio,
               monto_bs: Number(remote.monto_bs) || 0,
               monto_usd: montoUsd ?? localPagos[existeIdx].monto_usd,
               tasa_bcv: tasaBcv ?? localPagos[existeIdx].tasa_bcv,
+              metodo_pago: remote.metodo_pago || localPagos[existeIdx].metodo_pago,
+              referencia: remote.referencia || localPagos[existeIdx].referencia,
               estado: remote.estado || localPagos[existeIdx].estado,
               fecha_vencimiento: fechaVenc ?? localPagos[existeIdx].fecha_vencimiento,
               tipo_membresia: tipoMembresia ?? localPagos[existeIdx].tipo_membresia,
-              observaciones: obsTexto || localPagos[existeIdx].observaciones
+              observaciones: obsTexto || localPagos[existeIdx].observaciones,
+              registrado_por: remote.registrado_por || localPagos[existeIdx].registrado_por,
+              sincronizado: true
             };
             modificadoPagos = true;
           }
@@ -818,6 +820,7 @@ export class StorageService {
         const prevAsistLen = localAsist.length;
         localAsist = localAsist.filter(a => {
           if (!a.id || a.id.startsWith('asist-local-')) return true;
+          if (a.sincronizado === false) return true; // Preservar asistencias pendientes de subir
           if (pendingAsistIds.has(a.id)) return true;
           return serverAsistIds.has(a.id);
         });
@@ -843,7 +846,9 @@ export class StorageService {
               hora_salida: remote.hora_salida,
               tiempo_horas: remote.tiempo_horas,
               estado: remote.estado || 'Activo',
-              ubicacion: remote.ubicacion
+              ubicacion: remote.ubicacion,
+              registrado_por: remote.registrado_por,
+              sincronizado: true
             });
             nuevasAsistencias++;
             modificadoAsist = true;
@@ -853,7 +858,9 @@ export class StorageService {
               id: remote.id,
               hora_salida: remote.hora_salida ?? localAsist[existeIdx].hora_salida,
               tiempo_horas: remote.tiempo_horas ?? localAsist[existeIdx].tiempo_horas,
-              estado: remote.estado || localAsist[existeIdx].estado
+              estado: remote.estado || localAsist[existeIdx].estado,
+              registrado_por: remote.registrado_por || localAsist[existeIdx].registrado_por,
+              sincronizado: true
             };
             modificadoAsist = true;
           }
@@ -890,6 +897,57 @@ export class StorageService {
       };
       window.dispatchEvent(new CustomEvent('mpv-sync-completed', { detail: res }));
       return res;
+    }
+
+    // Reconciliar: asegurar que pagos y asistencias locales pendientes de sincronizar se agreguen a la cola
+    const localPagosParaSync = this.obtenerPagos();
+    const colaActual = this.obtenerColaSync();
+    const idsEnCola = new Set(colaActual.filter(q => q.estado === 'pendiente' || q.estado === 'sincronizando').map(q => q.registro_id));
+    let nuevosEncolados = false;
+
+    for (const p of localPagosParaSync) {
+      if (p.sincronizado === false && !idsEnCola.has(p.id)) {
+        colaActual.push({
+          id: 'sync-' + Math.random().toString(36).substring(2, 9),
+          registro_id: p.id,
+          operacion: 'INSERT',
+          payload: p,
+          hlc_timestamp: HybridLogicalClock.now(),
+          intentos: 0,
+          estado: 'pendiente',
+          creado_en: p.creado_en || new Date().toISOString(),
+          tipo_entidad: 'pago',
+          resumen: `Pago Bs. ${Number(p.monto_bs || 0).toFixed(2)} - ${p.usuario_nombre}`,
+          servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+        });
+        idsEnCola.add(p.id);
+        nuevosEncolados = true;
+      }
+    }
+
+    const localAsistParaSync = this.obtenerAsistencias();
+    for (const a of localAsistParaSync) {
+      if (a.sincronizado === false && !idsEnCola.has(a.id)) {
+        colaActual.push({
+          id: 'sync-' + Math.random().toString(36).substring(2, 9),
+          registro_id: a.id,
+          operacion: 'INSERT',
+          payload: a,
+          hlc_timestamp: HybridLogicalClock.now(),
+          intentos: 0,
+          estado: 'pendiente',
+          creado_en: a.fecha || new Date().toISOString(),
+          tipo_entidad: 'asistencia',
+          resumen: `Asistencia - ${a.usuario_nombre} (${a.disciplina})`,
+          servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+        });
+        idsEnCola.add(a.id);
+        nuevosEncolados = true;
+      }
+    }
+
+    if (nuevosEncolados) {
+      localStorage.setItem(STORAGE_KEYS.COLA_SYNC, JSON.stringify(colaActual));
     }
 
     const queue = this.obtenerColaSync();
@@ -961,6 +1019,23 @@ export class StorageService {
         if (reg) {
           reg.sincronizado = true;
           reg.actualizado_en = nowIso;
+        }
+        if (item.tipo_entidad === 'pago') {
+          const allPagos = this.obtenerPagos();
+          const targetP = allPagos.find(p => p.id === item.registro_id);
+          if (targetP) {
+            targetP.sincronizado = true;
+            localStorage.setItem(STORAGE_KEYS.PAGOS, JSON.stringify(allPagos));
+            window.dispatchEvent(new CustomEvent('mpv-pagos-updated'));
+          }
+        } else if (item.tipo_entidad === 'asistencia') {
+          const allAsist = this.obtenerAsistencias();
+          const targetA = allAsist.find(a => a.id === item.registro_id);
+          if (targetA) {
+            targetA.sincronizado = true;
+            localStorage.setItem(STORAGE_KEYS.ASISTENCIAS, JSON.stringify(allAsist));
+            window.dispatchEvent(new CustomEvent('mpv-asistencias-updated'));
+          }
         }
         detalles.push({
           id: item.id,
@@ -1357,8 +1432,10 @@ export class StorageService {
     const nuevoPago: PagoRegistro = {
       ...pago,
       id: generarUUID(),
+      registrado_por: operadorCedula || sesion?.cedula || 'operador',
       ubicacion,
-      creado_en: now
+      creado_en: now,
+      sincronizado: false
     };
 
     pagos.unshift(nuevoPago);
@@ -1597,7 +1674,9 @@ export class StorageService {
       fecha: dateStr,
       hora_entrada: timeStr,
       estado: 'Activo',
-      ubicacion
+      ubicacion,
+      registrado_por: operadorCedula || sesion?.cedula || 'operador',
+      sincronizado: false
     };
 
     asistencias.unshift(nuevaAsistencia);
@@ -1638,6 +1717,45 @@ export class StorageService {
 
     window.dispatchEvent(new CustomEvent('mpv-asistencia-updated'));
     return nuevaAsistencia;
+  }
+
+  static registrarAsistenciaDirecta(asistencia: Omit<AsistenciaRegistro, 'id'>, operadorCedula: string): AsistenciaRegistro {
+    const asistencias = this.obtenerAsistencias();
+    const sesion = this.obtenerSesion();
+    const now = new Date();
+    const ubicacion = asistencia.ubicacion || {
+      estado: sesion?.estado_asignado || 'Distrito Capital',
+      municipio: sesion?.municipio_asignado || 'Libertador',
+      parroquia: sesion?.parroquia_asignada || 'Sucre (Catia)'
+    };
+
+    const nueva: AsistenciaRegistro = {
+      ...asistencia,
+      id: generarUUID(),
+      ubicacion,
+      registrado_por: operadorCedula || sesion?.cedula || 'operador',
+      sincronizado: false
+    };
+
+    asistencias.unshift(nueva);
+    localStorage.setItem(STORAGE_KEYS.ASISTENCIAS, JSON.stringify(asistencias));
+
+    this.encolarSincronizacion({
+      id: 'sync-' + Math.random().toString(36).substring(2, 9),
+      registro_id: nueva.id,
+      operacion: 'INSERT',
+      payload: nueva,
+      hlc_timestamp: HybridLogicalClock.now(),
+      intentos: 0,
+      estado: 'pendiente',
+      creado_en: now.toISOString(),
+      tipo_entidad: 'asistencia',
+      resumen: `Asistencia - ${nueva.usuario_nombre} (${nueva.disciplina})`,
+      servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+    });
+
+    window.dispatchEvent(new CustomEvent('mpv-asistencia-updated'));
+    return nueva;
   }
 
   static registrarSalidaAsistencia(asistenciaId: string, operadorCedula: string): boolean {

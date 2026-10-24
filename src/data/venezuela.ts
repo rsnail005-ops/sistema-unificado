@@ -451,6 +451,24 @@ export const ESTADOS_VENEZUELA: EstadoVE[] = [
       { nombre: "Isla de Patos", parroquias: ["Isla de Patos"] },
       { nombre: "Archipiélago Los Monjes", parroquias: ["Los Monjes"] }
     ]
+  },
+  {
+    nombre: "Guayana Esequiba",
+    capital: "Tumeremo",
+    municipios: [
+      {
+        nombre: "Guayana Esequiba",
+        parroquias: [
+          "San Martín de Turumbang",
+          "Tumeremo (Sede Administrativa)",
+          "San José de Anacoco",
+          "Isla de Anacoco",
+          "Sierra de Imataca",
+          "Venamo",
+          "Cuyuní"
+        ]
+      }
+    ]
   }
 ];
 
@@ -478,6 +496,9 @@ export function obtenerEstado(nombreEstado: string): EstadoVE | undefined {
   }
   if (buscado === 'vargas') {
     return ESTADOS_VENEZUELA.find(e => e.nombre === 'La Guaira');
+  }
+  if (buscado === 'esequibo' || buscado.includes('esequib') || buscado.includes('reclamacion')) {
+    return ESTADOS_VENEZUELA.find(e => e.nombre === 'Guayana Esequiba');
   }
 
   return ESTADOS_VENEZUELA.find(e => normalizarTextoGeografico(e.nombre) === buscado);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Download, RefreshCw, AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react';
 import { AppRelease, UpdateService } from '../services/updateService';
-
+import { StorageService } from '../services/storage';
 
 interface UpdateModalProps {
   release: AppRelease;
@@ -41,7 +41,15 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ release, obligatoria, 
     // Persistir la versión que se va a instalar para que al reiniciar
     // el sistema reconozca inmediatamente la nueva versión aplicada
     UpdateService.marcarVersionInstalada(release.version);
-    await UpdateService.lanzarInstalador(installerPath);
+
+    // Cierre forzoso de sesión para que la nueva versión requiera inicio de sesión obligatorio
+    StorageService.cerrarSesion();
+    try {
+      localStorage.removeItem('mpv_supabase_auth_token');
+      localStorage.removeItem('mpv_supabase_refresh_token');
+    } catch {}
+
+    await UpdateService.lanzarInstalador(installerPath, release.version);
   };
 
 

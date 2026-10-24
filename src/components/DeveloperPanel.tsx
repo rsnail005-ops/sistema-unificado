@@ -89,17 +89,9 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
 
   const [expandedRelease, setExpandedRelease] = useState<string | null>(null);
 
-  // Obtener token del usuario actual (Supabase auth)
+  // Obtener token del usuario actual (Supabase auth con verificación de expiración)
   const getToken = (): string => {
-    try {
-      const raw = localStorage.getItem('sb-auth-token') ||
-        localStorage.getItem('supabase.auth.token');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        return parsed?.access_token || parsed?.currentSession?.access_token || SupabaseService.getKey();
-      }
-    } catch { /* noop */ }
-    return SupabaseService.getKey();
+    return SupabaseService.getAuthToken() || SupabaseService.getKey();
   };
 
   const cargarReleases = async () => {

@@ -1,12 +1,8 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
-let nodemailer;
-try {
-  nodemailer = require('nodemailer');
-} catch (e) {
-  nodemailer = null;
-}
+
+Menu.setApplicationMenu(null);
 
 let mainWindow = null;
 
@@ -19,8 +15,7 @@ function createWindow() {
     width: 1320,
     height: 860,
     minWidth: 1080,
-    minHeight: 720,
-    title: 'Movimiento por la Paz y la Vida — Sistema Nacional de Almacenamiento',
+    title: `Sistema Unificado de Usuarios GNP v${app.getVersion()}`,
     backgroundColor: '#0a0f1d',
     icon: iconPath,
     webPreferences: {
@@ -29,6 +24,12 @@ function createWindow() {
       webSecurity: false
     },
     autoHideMenuBar: true
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.focus();
   });
 
   const isDev = process.argv.includes('--dev');
@@ -48,6 +49,10 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
+  if (app.isPackaged) {
+    crearAccesoDirectoEscritorio();
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -56,6 +61,59 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+/**
+ * Crea o actualiza el acceso directo en el Escritorio (soporta estándar y OneDrive)
+ */
+function crearAccesoDirectoEscritorio(customExePath) {
+  if (process.platform !== 'win32') return;
+  try {
+    const { spawn } = require('child_process');
+    const targetExe = customExePath || process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+    if (!targetExe || !fs.existsSync(targetExe)) return;
+    const targetDir = path.dirname(targetExe);
+
+    const psCommand = `
+      $targetExe = "${targetExe.replace(/\\/g, '\\\\').replace(/"/g, '`"')}"
+      $targetDir = "${targetDir.replace(/\\/g, '\\\\').replace(/"/g, '`"')}"
+      $desktopDirs = @(
+        [Environment]::GetFolderPath('Desktop'),
+        "$env:USERPROFILE\\OneDrive\\Desktop",
+        "$env:USERPROFILE\\OneDrive\\Escritorio",
+        "$env:USERPROFILE\\Escritorio"
+      ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+
+      foreach ($d in $desktopDirs) {
+        try {
+          $old = Join-Path $d "Movimiento Paz y Vida.lnk"
+          if (Test-Path $old) { Remove-Item $old -Force -ErrorAction SilentlyContinue }
+          $lnk = Join-Path $d "Sistema Unificado de Usuarios GNP.lnk"
+          $wsh = New-Object -ComObject WScript.Shell
+          $s = $wsh.CreateShortcut($lnk)
+          $s.TargetPath = $targetExe
+          $s.WorkingDirectory = $targetDir
+          $s.IconLocation = "$targetExe,0"
+          $s.Description = "Sistema Unificado de Usuarios GNP"
+          $s.Save()
+        } catch {}
+      }
+    `;
+
+    const child = spawn('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-WindowStyle', 'Hidden',
+      '-Command', psCommand
+    ], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
+    child.unref();
+  } catch (e) {
+    console.error('No se pudo crear acceso directo:', e);
+  }
+}
 
 // IPC Handler para Diálogo de Archivos
 ipcMain.handle('dialog:openFile', async (event, options) => {
@@ -79,73 +137,8 @@ ipcMain.handle('dialog:openFile', async (event, options) => {
   return null;
 });
 
-// IPC Handler para Envío Real de Correos mediante SMTP
-ipcMain.handle('mail:sendVerificationCode', async (event, { to, code, name, smtpConfig }) => {
-  if (!nodemailer) {
-    return { success: false, error: 'Módulo nodemailer no disponible.' };
-  }
-
-  if (!smtpConfig || !smtpConfig.host || !smtpConfig.user || !smtpConfig.pass) {
-    return {
-      success: false,
-      error: 'Servidor de correo SMTP no configurado. Para recibir correos reales, ingrese sus credenciales SMTP en Configuración.'
-    };
-  }
-
-  try {
-    const transporter = nodemailer.createTransport({
-      host: smtpConfig.host,
-      port: Number(smtpConfig.port) || 587,
-      secure: Number(smtpConfig.port) === 465,
-      auth: {
-        user: smtpConfig.user,
-        pass: smtpConfig.pass
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
-
-    const info = await transporter.sendMail({
-      from: `"Movimiento por la Paz y la Vida" <${smtpConfig.user}>`,
-      to,
-      subject: `Código de Verificación: ${code} - Movimiento por la Paz y la Vida`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; background: #0a0f1d; color: #ffffff; border-radius: 12px; border: 1px solid #1e2d4a;">
-          <div style="text-align: center; margin-bottom: 20px;">
-            <h2 style="color: #60a5fa; margin: 0;">MOVIMIENTO POR LA PAZ Y LA VIDA</h2>
-            <p style="color: #f59e0b; font-size: 13px; margin: 4px 0 0 0;">Sistema Nacional de Almacenamiento Seguro</p>
-          </div>
-          <p style="font-size: 14px; color: #cbd5e1;">Estimado(a) <strong>${name || 'Operador'}</strong>,</p>
-          <p style="font-size: 14px; color: #cbd5e1;">Su solicitud de registro ha sido recibida en el sistema. Utilice el siguiente código de seguridad oficial para verificar su cuenta:</p>
-          <div style="text-align: center; margin: 28px 0;">
-            <span style="font-size: 32px; font-weight: bold; letter-spacing: 0.25em; color: #38bdf8; background: #111a2e; padding: 12px 24px; border-radius: 8px; border: 1px solid #2563eb;">
-              ${code}
-            </span>
-          </div>
-          <p style="font-size: 12px; color: #94a3b8;">Este código expira en 15 minutos y es para uso estrictamente confidencial.</p>
-          <hr style="border: 0; border-top: 1px solid #1e2d4a; margin: 20px 0;" />
-          <p style="font-size: 11px; color: #64748b; text-align: center;">República Bolivariana de Venezuela • Movimiento por la Paz y la Vida</p>
-        </div>
-      `
-    });
-
-    return { success: true, messageId: info.messageId };
-  } catch (err) {
-    console.error('Error enviando correo SMTP:', err);
-    return { success: false, error: err.message };
-  }
-});
-
 // =============================================================================
-// IPC Handler para Consulta Real de Cédula en Línea
-//
-// FUENTES (en orden de prioridad):
-//   1. ArmandoData.com — Verificado en vivo: cubre cédulas desde 1M hasta 28M+
-//      El nombre está en <p class="info-card-text display-6">NOMBRE</p>
-//      Y también en el <title>: "Detalle de Persona: NOMBRE CI :VXXXXXXXX"
-//   2. CNE Electoral — Registro Nacional de Electores (mayores de 18)
-//   3. IVSS — Instituto Venezolano de Seguros Sociales (pensionados)
+// IPC Handler para Consulta de Cédula en Línea (ArmandoData / CNE / IVSS)
 // =============================================================================
 ipcMain.handle('saime:consultarCedulaReal', async (event, cedulaRaw) => {
   const https = require('https');
@@ -416,11 +409,30 @@ ipcMain.handle('update:download', async (event, { downloadUrl }) => {
 });
 
 /**
- * update:launch
- *   Reemplaza el ejecutable actual (.exe) con la nueva versión descargada
- *   y reinicia automáticamente la aplicación en la misma ubicación original.
+ * app:setVersion
+ *   Actualiza dinámicamente el título de la ventana de la aplicación cuando
+ *   cambia la versión instalada o se detecta una actualización.
  */
-ipcMain.handle('update:launch', async (event, { installerPath }) => {
+ipcMain.handle('app:setVersion', (event, { version }) => {
+  if (mainWindow && !mainWindow.isDestroyed() && version) {
+    const clean = String(version).replace(/^v/, '').trim();
+    mainWindow.setTitle(`Sistema Unificado de Usuarios GNP v${clean}`);
+  }
+  return { ok: true };
+});
+
+ipcMain.handle('app:getVersion', () => {
+  return app.getVersion();
+});
+
+/**
+ * update:launch
+ *   Reemplaza el ejecutable actual con la nueva versión descargada,
+ *   elimina el ejecutable de la versión anterior, renombra el nuevo archivo
+ *   con el nombre y número de versión reciente, actualiza los accesos directos
+ *   y reinicia automáticamente la aplicación.
+ */
+ipcMain.handle('update:launch', async (event, { installerPath, newVersion }) => {
   const { spawn } = require('child_process');
   const fs = require('fs');
   const path = require('path');
@@ -432,10 +444,47 @@ ipcMain.handle('update:launch', async (event, { installerPath }) => {
       return { ok: false, error: 'El archivo descargado no existe en el disco.' };
     }
 
+    const cleanVersion = newVersion ? String(newVersion).replace(/^v/, '').trim() : '';
     const isSetupInstaller = installerPath.toLowerCase().includes('setup');
 
-    // 1. Si es un instalador formal NSIS (Setup.exe), abrirlo con el shell
+    // 1. Si es un instalador formal NSIS (Setup.exe)
     if (isSetupInstaller) {
+      const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+      if (app.isPackaged && targetExe && fs.existsSync(targetExe)) {
+        const updaterPsPath = path.join(os.tmpdir(), `mpv-setup-runner-${Date.now()}.ps1`);
+        const psContent = `
+$pidToWait = ${process.pid}
+$oldExe = "${targetExe.replace(/\\/g, '\\\\').replace(/"/g, '`"')}"
+$setupExe = "${installerPath.replace(/\\/g, '\\\\').replace(/"/g, '`"')}"
+
+try {
+  $proc = Get-Process -Id $pidToWait -ErrorAction SilentlyContinue
+  if ($proc) { $proc.WaitForExit(15000) }
+} catch {}
+Start-Sleep -Seconds 1
+
+Start-Process -FilePath $setupExe
+Start-Sleep -Seconds 4
+if (Test-Path $oldExe) { Remove-Item -Path $oldExe -Force -ErrorAction SilentlyContinue }
+Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+`;
+        fs.writeFileSync(updaterPsPath, psContent, { encoding: 'utf8' });
+        const child = spawn('powershell.exe', [
+          '-NoProfile',
+          '-NonInteractive',
+          '-WindowStyle', 'Hidden',
+          '-ExecutionPolicy', 'Bypass',
+          '-File', updaterPsPath
+        ], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true
+        });
+        child.unref();
+        setTimeout(() => app.exit(0), 400);
+        return { ok: true };
+      }
+
       await shell.openPath(installerPath);
       setTimeout(() => app.quit(), 1500);
       return { ok: true };
@@ -451,46 +500,105 @@ ipcMain.handle('update:launch', async (event, { installerPath }) => {
     // 3. Auto-reemplazo en caliente de ejecutable portable / standalone
     // PORTABLE_EXECUTABLE_FILE contiene la ruta del .exe que el usuario ejecutó originalmente
     const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+    const targetDir = path.dirname(targetExe);
     const currentPid = process.pid;
-    const updaterBatPath = path.join(os.tmpdir(), `mpv-update-runner-${Date.now()}.bat`);
 
-    // Script batch que espera a que el proceso actual muera, sobreescribe el ejecutable original y lo arranca
-    const batchContent = `@echo off
-chcp 65001 > nul
-set "PID=${currentPid}"
-set "NEW_EXE=${installerPath.replace(/"/g, '')}"
-set "TARGET_EXE=${targetExe.replace(/"/g, '')}"
+    // Calcular el nuevo nombre del ejecutable con la versión reciente: "MovimientoPazVida {version}.exe"
+    let newExeName = '';
+    if (cleanVersion) {
+      newExeName = `MovimientoPazVida ${cleanVersion}.exe`;
+    } else {
+      const downloadedBase = path.basename(installerPath);
+      newExeName = downloadedBase.startsWith('mpv-update') ? path.basename(targetExe) : downloadedBase;
+    }
 
-:wait_process
-timeout /t 1 /nobreak > nul
-tasklist /fi "PID eq %PID%" 2>nul | find "%PID%" > nul
-if %errorlevel% equ 0 (
-    goto wait_process
-)
+    const finalExePath = path.join(targetDir, newExeName);
+    const updaterPsPath = path.join(os.tmpdir(), `mpv-update-runner-${Date.now()}.ps1`);
 
-timeout /t 2 /nobreak > nul
+    // Script PowerShell 100% silencioso y nativo:
+    // a) Espera a que el proceso actual muera limpiamente mediante WaitForExit
+    // b) Copia el nuevo ejecutable con el nuevo nombre
+    // c) Elimina la versión anterior
+    // d) Actualiza el acceso directo en el Escritorio
+    // e) Inicia el nuevo ejecutable sin ninguna consola visible
+    // f) Limpia temporales
+    const psContent = `
+$pidToWait = ${currentPid}
+$newExe = "${installerPath.replace(/\\/g, '\\\\').replace(/"/g, '`"')}"
+$finalExe = "${finalExePath.replace(/\\/g, '\\\\').replace(/"/g, '`"')}"
+$targetExe = "${targetExe.replace(/\\/g, '\\\\').replace(/"/g, '`"')}"
+$targetDir = "${targetDir.replace(/\\/g, '\\\\').replace(/"/g, '`"')}"
 
-set ATTEMPTS=0
-:try_copy
-copy /y "%NEW_EXE%" "%TARGET_EXE%" > nul 2>&1
-if %errorlevel% neq 0 (
-    set /a ATTEMPTS+=1
-    if %ATTEMPTS% leq 20 (
-        timeout /t 1 /nobreak > nul
-        goto try_copy
-    )
-)
+try {
+  $proc = Get-Process -Id $pidToWait -ErrorAction SilentlyContinue
+  if ($proc) { $proc.WaitForExit(15000) }
+} catch {}
+Start-Sleep -Seconds 1
 
-start "" "%TARGET_EXE%"
-timeout /t 3 /nobreak > nul
-del "%NEW_EXE%" > nul 2>&1
-(goto) 2>nul & del "%~f0"
+$copied = $false
+for ($i = 0; $i -lt 30; $i++) {
+  try {
+    Copy-Item -Path $newExe -Destination $finalExe -Force -ErrorAction Stop
+    $copied = $true
+    break
+  } catch {
+    Start-Sleep -Milliseconds 600
+  }
+}
+
+if ($targetExe -ne $finalExe -and (Test-Path $targetExe)) {
+  Remove-Item -Path $targetExe -Force -ErrorAction SilentlyContinue
+}
+
+Get-ChildItem -Path $targetDir -Filter "MovimientoPazVida*.exe" -ErrorAction SilentlyContinue | ForEach-Object {
+  if ($_.FullName -ne $finalExe) {
+    Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+  }
+}
+
+try {
+  $desktopDirs = @(
+    [Environment]::GetFolderPath('Desktop'),
+    "$env:USERPROFILE\\OneDrive\\Desktop",
+    "$env:USERPROFILE\\OneDrive\\Escritorio",
+    "$env:USERPROFILE\\Escritorio"
+  ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+
+  foreach ($d in $desktopDirs) {
+    try {
+      $old = Join-Path $d "Movimiento Paz y Vida.lnk"
+      if (Test-Path $old) { Remove-Item $old -Force -ErrorAction SilentlyContinue }
+      $lnk = Join-Path $d "Sistema Unificado de Usuarios GNP.lnk"
+      $wsh = New-Object -ComObject WScript.Shell
+      $s = $wsh.CreateShortcut($lnk)
+      $s.TargetPath = $finalExe
+      $s.WorkingDirectory = $targetDir
+      $s.IconLocation = "$finalExe,0"
+      $s.Description = "Sistema Unificado de Usuarios GNP"
+      $s.Save()
+    } catch {}
+  }
+} catch {}
+
+if (Test-Path $finalExe) {
+  Start-Process -FilePath $finalExe
+}
+
+Start-Sleep -Seconds 3
+if (Test-Path $newExe) { Remove-Item -Path $newExe -Force -ErrorAction SilentlyContinue }
+Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
 `;
 
-    fs.writeFileSync(updaterBatPath, batchContent, { encoding: 'utf8' });
+    fs.writeFileSync(updaterPsPath, psContent, { encoding: 'utf8' });
 
-    // Lanzar script batch completamente desacoplado
-    const child = spawn('cmd.exe', ['/c', updaterBatPath], {
+    // Lanzar script PowerShell completamente desacoplado y sin ventana
+    const child = spawn('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-WindowStyle', 'Hidden',
+      '-ExecutionPolicy', 'Bypass',
+      '-File', updaterPsPath
+    ], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true

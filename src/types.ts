@@ -156,7 +156,9 @@ export interface PagoRegistro {
   fecha_vencimiento?: string;
   observaciones?: string;
   ubicacion?: UbicacionGeografica;
+  registrado_por?: string;
   creado_en: string;
+  sincronizado?: boolean;
 }
 
 export interface AsistenciaRegistro {
@@ -171,6 +173,8 @@ export interface AsistenciaRegistro {
   tiempo_horas?: number;
   estado: 'Activo' | 'Finalizado';
   ubicacion?: UbicacionGeografica;
+  registrado_por?: string;
+  sincronizado?: boolean;
 }
 
 export interface EventoDatos {

@@ -42,6 +42,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
   const [currentVersion, setCurrentVersion] = useState<string>(() => UpdateService.obtenerVersionInstalada());
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [hasNewUpdate, setHasNewUpdate] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const refreshData = () => {
     setConfig(StorageService.obtenerConfig());
@@ -135,6 +136,25 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
       setTasaBCV(BcvService.obtenerTasaSincrona());
     };
     window.addEventListener('mpv-bcv-updated', handleBcvUpdate);
+
+    const syncAppTitle = (version: string) => {
+      document.title = `Sistema Unificado de Usuarios GNP v${version}`;
+      if (typeof window !== 'undefined' && (window as any).require) {
+        try {
+          const { ipcRenderer } = (window as any).require('electron');
+          ipcRenderer.invoke('app:setVersion', { version });
+        } catch {}
+      }
+    };
+
+    syncAppTitle(currentVersion);
+
+    const handleVersionUpdate = (e: Event) => {
+      const v = (e as CustomEvent).detail || UpdateService.obtenerVersionInstalada();
+      setCurrentVersion(v);
+      syncAppTitle(v);
+    };
+    window.addEventListener('mpv-version-updated', handleVersionUpdate);
 
     // Consultar tasa oficial del BCV al iniciar
     BcvService.actualizarTasaEnLinea().then(nueva => {
@@ -273,6 +293,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
       window.removeEventListener('mpv-config-updated', refreshData);
       window.removeEventListener('mpv-data-updated', refreshData);
       window.removeEventListener('mpv-bcv-updated', handleBcvUpdate);
+      window.removeEventListener('mpv-version-updated', handleVersionUpdate);
       window.removeEventListener('offline', handleNetworkOffline);
       window.removeEventListener('online', handleNetworkOnline);
       window.removeEventListener('focus', handleWindowFocus);
@@ -346,7 +367,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
             }} 
           />
           <div>
-            <h1 className="brand-title">MOVIMIENTO POR LA PAZ Y LA VIDA</h1>
+            <h1 className="brand-title">SISTEMA UNIFICADO DE USUARIOS GNP</h1>
             <p className="brand-subtitle">
               {sesion?.base_misiones_nombre 
                 ? `${sesion.base_misiones_nombre} • ${sesion.estado_asignado}` 
@@ -380,6 +401,53 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
             <DollarSign size={14} style={{ color: '#34d399' }} />
             <span>BCV: <strong>Bs. {tasaBCV.tasa.toFixed(2)}</strong></span>
             <span style={{ fontSize: '10px', opacity: 0.85, color: '#93c5fd', marginLeft: '2px' }}>⇄ USD</span>
+          </button>
+
+          {/* Botón Verificar Actualizaciones */}
+          <button
+            id="btn-check-update"
+            onClick={handleCheckUpdate}
+            disabled={isCheckingUpdate}
+            className="status-pill"
+            style={{
+              cursor: isCheckingUpdate ? 'wait' : 'pointer',
+              background: hasNewUpdate
+                ? 'linear-gradient(135deg, rgba(37,99,235,0.25) 0%, rgba(124,58,237,0.25) 100%)'
+                : 'rgba(255,255,255,0.04)',
+              border: hasNewUpdate
+                ? '1px solid rgba(96,165,250,0.5)'
+                : '1px solid rgba(255,255,255,0.1)',
+              color: hasNewUpdate ? '#93c5fd' : '#64748b',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: 600,
+              transition: 'all 0.2s ease',
+              position: 'relative',
+            }}
+            title={isCheckingUpdate ? 'Verificando...' : hasNewUpdate ? '¡Hay una nueva versión disponible! Clic para actualizar.' : `Verificar actualizaciones (versión actual: v${currentVersion})`}
+          >
+            <Sparkles
+              size={13}
+              style={{
+                color: hasNewUpdate ? '#93c5fd' : '#64748b',
+                animation: isCheckingUpdate ? 'spin 1s linear infinite' : 'none'
+              }}
+            />
+            <span>v{currentVersion}</span>
+            {hasNewUpdate && (
+              <span style={{
+                width: 7, height: 7,
+                background: '#3b82f6',
+                borderRadius: '50%',
+                display: 'inline-block',
+                boxShadow: '0 0 6px rgba(59,130,246,0.8)',
+                animation: 'pulse 1.5s ease-in-out infinite'
+              }} />
+            )}
           </button>
 
           {/* Reloj */}
@@ -456,11 +524,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
 
           {/* Cerrar Sesión */}
           <button
-            onClick={() => {
-              if (confirm('¿Desea cerrar la sesión?')) {
-                StorageService.cerrarSesion();
-              }
-            }}
+            onClick={() => setShowLogoutConfirm(true)}
             className="btn btn-danger"
             style={{ padding: '6px 10px' }}
             title="Cerrar Sesión"
@@ -631,6 +695,96 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
         isOpen={isBcvModalOpen} 
         onClose={() => setIsBcvModalOpen(false)} 
       />
+
+      {/* Modal de Confirmación de Cierre de Sesión */}
+      {showLogoutConfirm && (
+        <div
+          className="modal-overlay"
+          style={{
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(6px)'
+          }}
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div
+            className="modal-content"
+            style={{
+              maxWidth: '430px',
+              width: '90%',
+              backgroundColor: '#101728',
+              border: '1px solid #1e2d4a',
+              borderRadius: '18px',
+              padding: '28px',
+              textAlign: 'center',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8)'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div
+              style={{
+                width: '54px',
+                height: '54px',
+                borderRadius: '50%',
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                color: '#ef4444',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px auto',
+                border: '1px solid rgba(239, 68, 68, 0.3)'
+              }}
+            >
+              <LogOut size={26} />
+            </div>
+
+            <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff', marginBottom: '8px' }}>
+              ¿Cerrar Sesión del Sistema?
+            </h3>
+
+            <p style={{ fontSize: '13.5px', color: '#94a3b8', marginBottom: '24px', lineHeight: '1.5' }}>
+              {sesion
+                ? `Se cerrará la sesión activa de ${sesion.nombres} ${sesion.apellidos} (${sesion.cedula}). Para volver a ingresar deberá introducir sus credenciales.`
+                : '¿Está seguro de que desea salir del sistema?'}
+            </p>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ flex: 1, padding: '10px 16px', fontSize: '13.5px' }}
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  fontSize: '13.5px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  StorageService.cerrarSesion();
+                }}
+              >
+                <LogOut size={15} />
+                <span>Cerrar Sesión</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

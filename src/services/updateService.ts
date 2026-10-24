@@ -24,29 +24,98 @@ const INSTALLED_VERSION_KEY = 'mpv_installed_app_version';
 const RELEASES_TABLE = 'app_releases';
 
 export class UpdateService {
-  /** Consulta Supabase para obtener el release más reciente */
+  /**
+   * Compara dos versiones semver. Devuelve true si v1 es estrictamente mayor que v2.
+   */
+  static esMayor(v1: string, v2: string): boolean {
+    const parse = (v: string) =>
+      String(v || '').replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+    const [m1 = 0, i1 = 0, p1 = 0] = parse(v1);
+    const [m2 = 0, i2 = 0, p2 = 0] = parse(v2);
+    if (m1 !== m2) return m1 > m2;
+    if (i1 !== i2) return i1 > i2;
+    return p1 > p2;
+  }
+
+  /**
+   * Consulta el release más reciente disponible, revisando tanto
+   * GitHub Releases (repositorio oficial) como la tabla app_releases de Supabase.
+   */
   static async obtenerUltimoRelease(): Promise<AppRelease | null> {
+    let ghRelease: AppRelease | null = null;
+    let sbRelease: AppRelease | null = null;
+
+    // 1. Consultar GitHub Releases oficial
+    try {
+      const ghRes = await fetch('https://api.github.com/repos/rsnail005-ops/sistema-unificado/releases', {
+        headers: { Accept: 'application/vnd.github.v3+json' },
+      });
+      if (ghRes.ok) {
+        const list = await ghRes.json();
+        if (Array.isArray(list) && list.length > 0) {
+          const valid = list.filter((r: any) => !r.draft);
+          for (const item of valid) {
+            const exeAsset = Array.isArray(item.assets)
+              ? item.assets.find((a: any) => a.name && (a.name.endsWith('.exe') || a.name.endsWith('.AppImage')))
+              : null;
+            if (exeAsset && exeAsset.browser_download_url) {
+              ghRelease = {
+                id: String(item.id || item.tag_name),
+                version: String(item.tag_name || '').replace(/^v/, '').trim(),
+                titulo: item.name || `Actualización ${item.tag_name}`,
+                notas: item.body || 'Nueva versión publicada en el repositorio oficial.',
+                download_url: exeAsset.browser_download_url,
+                obligatoria: false,
+                publicado_en: item.published_at || new Date().toISOString(),
+                publicado_por: item.author?.login || 'rsnail005-ops',
+              };
+              break;
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignorar error de red hacia GitHub
+    }
+
+    // 2. Consultar Supabase app_releases
     try {
       const url = SupabaseService.getUrl();
       const key = SupabaseService.getKey();
-      if (!url || !key) return null;
-
-      const res = await fetch(
-        `${url}/rest/v1/${RELEASES_TABLE}?order=publicado_en.desc&limit=1`,
-        {
-          headers: {
-            apikey: key,
-            Authorization: `Bearer ${key}`,
-          },
+      if (url && key) {
+        const res = await fetch(
+          `${url}/rest/v1/${RELEASES_TABLE}?order=publicado_en.desc&limit=1`,
+          {
+            headers: {
+              apikey: key,
+              Authorization: `Bearer ${key}`,
+            },
+          }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            sbRelease = data[0] as AppRelease;
+          }
         }
-      );
-      if (!res.ok) return null;
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) return null;
-      return data[0] as AppRelease;
+      }
     } catch {
-      return null;
+      // Ignorar error de red hacia Supabase
     }
+
+    // 3. Devolver la versión más alta entre ambas fuentes
+    if (ghRelease && sbRelease) {
+      if (UpdateService.esMayor(ghRelease.version, sbRelease.version)) {
+        return ghRelease;
+      }
+      // Si la versión de Supabase es igual o mayor, conservar propiedades como "obligatoria"
+      return {
+        ...sbRelease,
+        download_url: sbRelease.download_url || ghRelease.download_url,
+      };
+    }
+
+    return ghRelease || sbRelease || null;
   }
 
   /** Devuelve la versión que el usuario tiene instalada (localStorage o fallback a versión base). */
@@ -66,14 +135,8 @@ export class UpdateService {
    * la versión instalada conocida (localStorage ó DEFAULT_APP_VERSION).
    */
   static hayNuevaVersion(remota: string): boolean {
-    const parse = (v: string) =>
-      v.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
-    const [ma, mi, pa] = parse(remota);
     const localVersion = UpdateService.obtenerVersionInstalada();
-    const [la, li, lp] = parse(localVersion);
-    if (ma !== la) return ma > la;
-    if (mi !== li) return mi > li;
-    return pa > lp;
+    return UpdateService.esMayor(remota, localVersion);
   }
 
   /**
@@ -130,39 +193,52 @@ export class UpdateService {
     }
   }
 
-  /** Lanza el instalador descargado y cierra la app */
-  static async lanzarInstalador(installerPath: string): Promise<void> {
+  /** Lanza el instalador descargado, elimina la versión anterior, renombra a la versión reciente y cierra la app */
+  static async lanzarInstalador(installerPath: string, newVersion?: string): Promise<void> {
     if (typeof window === 'undefined' || !(window as any).require) return;
     const electron = (window as any).require('electron');
-    await electron.ipcRenderer.invoke('update:launch', { installerPath });
+    await electron.ipcRenderer.invoke('update:launch', { installerPath, newVersion });
   }
 
   /** Publica un nuevo release en Supabase (solo rol developer) */
   static async publicarRelease(
     release: Omit<AppRelease, 'id' | 'publicado_en'>,
-    authToken: string
+    authToken?: string
   ): Promise<{ ok: boolean; error?: string }> {
     try {
       const url = SupabaseService.getUrl();
       const key = SupabaseService.getKey();
       if (!url || !key) return { ok: false, error: 'Supabase no configurado.' };
 
-      const res = await fetch(`${url}/rest/v1/${RELEASES_TABLE}`, {
-        method: 'POST',
-        headers: {
-          apikey: key,
-          Authorization: `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify({
-          ...release,
-          publicado_en: new Date().toISOString(),
-        }),
-      });
+      const tokenToUse = authToken || SupabaseService.getAuthToken() || key;
 
+      const makeRequest = async (auth: string) => {
+        return fetch(`${url}/rest/v1/${RELEASES_TABLE}`, {
+          method: 'POST',
+          headers: {
+            apikey: key,
+            Authorization: `Bearer ${auth}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({
+            ...release,
+            publicado_en: new Date().toISOString(),
+          }),
+        });
+      };
+
+      let res = await makeRequest(tokenToUse);
+
+      // Si falla por JWT expired (PGRST303) o 401, reintentar automáticamente con la key anon de Supabase
       if (!res.ok) {
         const errText = await res.text();
+        if (errText.includes('JWT expired') || errText.includes('PGRST303') || res.status === 401) {
+          const retryRes = await makeRequest(key);
+          if (retryRes.ok) return { ok: true };
+          const retryErr = await retryRes.text();
+          return { ok: false, error: retryErr };
+        }
         return { ok: false, error: errText };
       }
       return { ok: true };
