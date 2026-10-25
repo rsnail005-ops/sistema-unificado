@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, 
   Calendar, 
@@ -18,10 +18,11 @@ import {
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { ESTADOS_VENEZUELA } from '../data/venezuela';
-import { Registro } from '../types';
+import { Registro, UsuarioSesion, isAdministradorBase, puedeVerNacional } from '../types';
 
 interface DashboardViewProps {
   onNavigate: (tab: any, action?: string) => void;
+  sesion?: UsuarioSesion | null;
 }
 
 // Utilidad para inicio de semana (lunes)
@@ -76,8 +77,16 @@ const MEDAL_COLORS = [
   { bg: 'linear-gradient(135deg, #cd7c3e, #a05c2a)', shadow: '0 8px 24px rgba(205,124,62,0.35)', icon: '🥉', label: '3°' },
 ];
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
-  const [selectedEstado, setSelectedEstado] = useState<string>('TODOS');
+export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, sesion }) => {
+  const esBaseAdmin = !!(sesion && isAdministradorBase(sesion));
+  const baseAsignada = sesion?.base_misiones_nombre?.trim() || '';
+
+  const [selectedEstado, setSelectedEstado] = useState<string>(() => {
+    if (esBaseAdmin && sesion?.estado_asignado) {
+      return sesion.estado_asignado;
+    }
+    return 'TODOS';
+  });
   const [registros, setRegistros] = useState<Registro[]>(() => StorageService.obtenerRegistros());
   const [asistencias, setAsistencias] = useState(() => StorageService.obtenerAsistencias());
   const [pagos, setPagos] = useState(() => StorageService.obtenerPagos());
@@ -112,12 +121,52 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     };
   }, []);
 
+  // Filtrado de alcance según rol
+  const registrosScope = useMemo(() => {
+    if (!esBaseAdmin || !baseAsignada) return registros;
+    const baseNorm = baseAsignada.toLowerCase();
+    return registros.filter(r => {
+      const baseR = (r.datos?.base_misiones || r.ubicacion?.comunidad || '').toLowerCase();
+      const op = (r.creado_por || '').toLowerCase();
+      return (
+        (baseR && (baseR.includes(baseNorm) || baseNorm.includes(baseR))) ||
+        (sesion?.cedula && op === sesion.cedula.toLowerCase())
+      );
+    });
+  }, [registros, esBaseAdmin, baseAsignada, sesion?.cedula]);
+
+  const pagosScope = useMemo(() => {
+    if (!esBaseAdmin || !baseAsignada) return pagos;
+    const baseNorm = baseAsignada.toLowerCase();
+    return pagos.filter(p => {
+      const baseP = (p.ubicacion?.comunidad || '').toLowerCase();
+      const op = (p.registrado_por || '').toLowerCase();
+      return (
+        (baseP && (baseP.includes(baseNorm) || baseNorm.includes(baseP))) ||
+        (sesion?.cedula && op === sesion.cedula.toLowerCase())
+      );
+    });
+  }, [pagos, esBaseAdmin, baseAsignada, sesion?.cedula]);
+
+  const asistenciasScope = useMemo(() => {
+    if (!esBaseAdmin || !baseAsignada) return asistencias;
+    const baseNorm = baseAsignada.toLowerCase();
+    return asistencias.filter(a => {
+      const baseA = (a.ubicacion?.comunidad || '').toLowerCase();
+      const op = (a.registrado_por || '').toLowerCase();
+      return (
+        (baseA && (baseA.includes(baseNorm) || baseNorm.includes(baseA))) ||
+        (sesion?.cedula && op === sesion.cedula.toLowerCase())
+      );
+    });
+  }, [asistencias, esBaseAdmin, baseAsignada, sesion?.cedula]);
+
   // Filter by state
   const registrosFiltrados = useMemo(() =>
     selectedEstado === 'TODOS'
-      ? registros
-      : registros.filter(r => r.ubicacion.estado === selectedEstado),
-    [registros, selectedEstado]
+      ? registrosScope
+      : registrosScope.filter(r => r.ubicacion.estado === selectedEstado),
+    [registrosScope, selectedEstado]
   );
 
   const personas = registrosFiltrados.filter(r => r.tipo === 'persona');
@@ -126,16 +175,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const sincronizados = registrosFiltrados.filter(r => r.sincronizado).length;
   const syncTasa = registrosFiltrados.length > 0 ? Math.round((sincronizados / registrosFiltrados.length) * 100) : 100;
 
-  // ─── Totales nacionales de caja ─────────────────────────────────────────────
-  const totalNacionalBs = useMemo(() =>
-    pagos.reduce((acc, p) => acc + Number(p.monto_bs || 0), 0),
-    [pagos]
+  // ─── Totales de caja (de base si es base admin, nacionales de lo contrario) ────
+  const totalCajaBs = useMemo(() =>
+    pagosScope.reduce((acc, p) => acc + Number(p.monto_bs || 0), 0),
+    [pagosScope]
   );
 
-  const totalNacionalUsd = useMemo(() => {
-    const fromPagos = pagos.reduce((acc, p) => acc + Number(p.monto_usd || 0), 0);
-    return fromPagos > 0 ? fromPagos : (totalNacionalBs / tasaBcv);
-  }, [pagos, totalNacionalBs, tasaBcv]);
+  const totalCajaUsd = useMemo(() => {
+    const fromPagos = pagosScope.reduce((acc, p) => acc + Number(p.monto_usd || 0), 0);
+    return fromPagos > 0 ? fromPagos : (totalCajaBs / tasaBcv);
+  }, [pagosScope, totalCajaBs, tasaBcv]);
 
   // ─── Ranking semanal de bases ─────────────────────────────────────────────
   const weekStart = useMemo(() => getStartOfWeek(new Date()), []);
@@ -191,10 +240,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#ffffff' }}>
-            Panel de Control
+            {esBaseAdmin ? `Panel de Control — ${baseAsignada || 'Mi Base'}` : 'Panel de Control'}
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-            Resumen nacional de operaciones, recaudacion y rendimiento de bases.
+            {esBaseAdmin 
+              ? 'Rendimiento y afluencia deportiva de la Gran Base de Paz asignada.'
+              : 'Resumen nacional de operaciones, recaudación y rendimiento de bases.'}
           </p>
         </div>
 
@@ -203,17 +254,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <MapPin size={16} style={{ color: 'var(--accent-amber)' }} />
             <span>Entidad Federal:</span>
           </div>
-          <select
-            className="form-select"
-            style={{ width: '220px' }}
-            value={selectedEstado}
-            onChange={e => setSelectedEstado(e.target.value)}
-          >
-            <option value="TODOS">Todos los Estados</option>
-            {ESTADOS_VENEZUELA.map(e => (
-              <option key={e.nombre} value={e.nombre}>{e.nombre}</option>
-            ))}
-          </select>
+          {esBaseAdmin ? (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: '8px',
+              padding: '6px 14px',
+              fontSize: '12px',
+              color: '#fbbf24',
+              fontWeight: 600
+            }}>
+              <span>Base: {baseAsignada || 'Asignada'} ({sesion?.estado_asignado || 'Local'})</span>
+            </div>
+          ) : (
+            <select
+              className="form-select"
+              style={{ width: '220px' }}
+              value={selectedEstado}
+              onChange={e => setSelectedEstado(e.target.value)}
+            >
+              <option value="TODOS">Todos los Estados (Nacional)</option>
+              {ESTADOS_VENEZUELA.map(e => (
+                <option key={e.nombre} value={e.nombre}>{e.nombre}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -257,12 +322,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         <div className="card" style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(17, 26, 46, 0.9))' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
             <div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total Caja Nac.</p>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {esBaseAdmin ? 'Caja de Mi Base' : 'Total Caja Nac.'}
+              </p>
               <h3 style={{ fontSize: '22px', fontWeight: 800, fontFamily: 'var(--font-heading)', marginTop: '4px', color: '#34d399', lineHeight: 1.2 }}>
-                Bs. {fmtBs(totalNacionalBs)}
+                Bs. {fmtBs(totalCajaBs)}
               </h3>
               <p style={{ fontSize: '11px', color: '#60a5fa', marginTop: '3px' }}>
-                ≈ $ {fmtUsd(totalNacionalUsd)}
+                ≈ $ {fmtUsd(totalCajaUsd)}
               </p>
             </div>
             <div style={{ padding: '10px', background: 'rgba(16, 185, 129, 0.2)', borderRadius: '12px', color: '#10b981' }}>
@@ -271,7 +338,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8' }}>
             <CreditCard size={14} style={{ color: '#34d399' }} />
-            <span>{pagos.length} pagos totales registrados</span>
+            <span>{pagosScope.length} pagos registrados</span>
           </div>
         </div>
 

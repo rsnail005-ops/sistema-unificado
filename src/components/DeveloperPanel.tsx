@@ -20,6 +20,8 @@ interface DetectedExe {
   sizeBytes?: number;
   sizeMB?: string;
   mtime?: string | Date;
+  isSetup?: boolean;
+  allCandidates?: DetectedExe[];
 }
 
 const card = (children: React.ReactNode, style?: React.CSSProperties) => (
@@ -466,25 +468,67 @@ export const DeveloperPanel: React.FC<DeveloperPanelProps> = ({ sesion }) => {
               </div>
 
               {detectedExe.found ? (
-                <div style={{
-                  background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: '10px 14px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                }}>
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: '#38bdf8', wordBreak: 'break-all' }}>
-                      {detectedExe.fileName}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
-                      Tamaño: <strong style={{ color: '#f59e0b' }}>{detectedExe.sizeMB} MB</strong> · Listo para ser subido
-                    </div>
-                  </div>
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
-                    background: 'rgba(16,185,129,0.2)', color: '#34d399', border: '1px solid rgba(16,185,129,0.4)',
-                    display: 'flex', alignItems: 'center', gap: 4
+                <div>
+                  <div style={{
+                    background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: '12px 14px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8
                   }}>
-                    <Check size={12} /> Detectado
-                  </span>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: '#38bdf8', wordBreak: 'break-all' }}>
+                          {detectedExe.fileName}
+                        </span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                          background: detectedExe.isSetup ? 'rgba(59,130,246,0.2)' : 'rgba(168,85,247,0.2)',
+                          color: detectedExe.isSetup ? '#60a5fa' : '#c084fc',
+                          border: `1px solid ${detectedExe.isSetup ? 'rgba(59,130,246,0.4)' : 'rgba(168,85,247,0.4)'}`
+                        }}>
+                          {detectedExe.isSetup ? '🌟 Instalador Setup (NSIS)' : '📦 Ejecutable Portable'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>
+                        Tamaño: <strong style={{ color: '#f59e0b' }}>{detectedExe.sizeMB} MB</strong> · Listo para ser publicado
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
+                      background: 'rgba(16,185,129,0.2)', color: '#34d399', border: '1px solid rgba(16,185,129,0.4)',
+                      display: 'flex', alignItems: 'center', gap: 4
+                    }}>
+                      <Check size={12} /> Seleccionado
+                    </span>
+                  </div>
+
+                  {/* Selector de variantes si se detectaron múltiples .exe */}
+                  {detectedExe.allCandidates && detectedExe.allCandidates.length > 1 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
+                      <span style={{ fontSize: 11, color: '#64748b' }}>Variantes disponibles:</span>
+                      {detectedExe.allCandidates.map(cand => (
+                        <button
+                          key={cand.filePath}
+                          type="button"
+                          onClick={() => {
+                            setDetectedExe({
+                              ...cand,
+                              allCandidates: detectedExe.allCandidates
+                            });
+                            if (cand.filePath) {
+                              localStorage.setItem('mpv_last_exe_path', cand.filePath);
+                            }
+                          }}
+                          style={{
+                            background: cand.filePath === detectedExe.filePath ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.05)',
+                            border: `1px solid ${cand.filePath === detectedExe.filePath ? '#3b82f6' : 'rgba(255,255,255,0.1)'}`,
+                            color: cand.filePath === detectedExe.filePath ? '#93c5fd' : '#94a3b8',
+                            borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 600, cursor: 'pointer'
+                          }}
+                        >
+                          {cand.isSetup ? 'Setup (NSIS)' : 'Portable'} ({cand.sizeMB} MB)
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div style={{

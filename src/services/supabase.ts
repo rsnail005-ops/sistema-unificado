@@ -53,15 +53,37 @@ function toValidUUID(id: string): string {
 
 export class SupabaseService {
   static getUrl(): string {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('mpv_config_v1') : null;
-    const config = raw ? JSON.parse(raw) : {};
-    return config.supabase_url || (import.meta as any).env?.VITE_SUPABASE_URL || 'https://oxliwrrrmefuisuzdtpr.supabase.co';
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem('mpv_config_v1');
+      if (raw) {
+        try {
+          const config = JSON.parse(raw);
+          if (config.supabase_url && config.supabase_url.includes('oxliwrrrmefuisuzdtpr')) {
+            config.supabase_url = 'https://jrjkuzjpabfaburppgtb.supabase.co';
+            config.supabase_anon_key = 'sb_publishable_C-8wmkw92r-UMOrIdmqvAA_wQakDXZ7';
+            localStorage.setItem('mpv_config_v1', JSON.stringify(config));
+          } else if (config.supabase_url) {
+            return config.supabase_url;
+          }
+        } catch {}
+      }
+    }
+    return (import.meta as any).env?.VITE_SUPABASE_URL || 'https://jrjkuzjpabfaburppgtb.supabase.co';
   }
 
   static getKey(): string {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('mpv_config_v1') : null;
-    const config = raw ? JSON.parse(raw) : {};
-    return config.supabase_anon_key || (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_XE6powc_BwOMu-vh3CY6tQ_OJq3m4Z5';
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem('mpv_config_v1');
+      if (raw) {
+        try {
+          const config = JSON.parse(raw);
+          if (config.supabase_anon_key && !config.supabase_url?.includes('oxliwrrrmefuisuzdtpr') && !config.supabase_anon_key.includes('oxliwrrrmefuisuzdtpr')) {
+            return config.supabase_anon_key;
+          }
+        } catch {}
+      }
+    }
+    return (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_C-8wmkw92r-UMOrIdmqvAA_wQakDXZ7';
   }
 
   static isTokenExpired(token: string): boolean {
@@ -635,4 +657,211 @@ export class SupabaseService {
       return { ok: false, error: e.message };
     }
   }
+
+  // ─── Biblioteca de Bases de Misiones ──────────────────────────────────────
+
+  static async listarBases(): Promise<{ ok: boolean; data?: any[]; error?: string }> {
+    try {
+      const url = this.getUrl();
+      if (!url) return { ok: false, error: 'Sin URL' };
+      const res = await fetch(
+        `${url}/rest/v1/bases_misiones?select=*&order=id.asc`,
+        { headers: this.getHeaders() }
+      );
+      if (!res.ok) return { ok: false, error: `Error ${res.status}` };
+      const data = await res.json();
+      return { ok: true, data: Array.isArray(data) ? data : [] };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  static async actualizarBase(id: string, payload: Record<string, any>): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const url = this.getUrl();
+      if (!url) return { ok: false, error: 'Sin URL' };
+      const body = { ...payload, actualizado_en: new Date().toISOString() };
+      const res = await fetch(
+        `${url}/rest/v1/bases_misiones?id=eq.${encodeURIComponent(id)}`,
+        {
+          method: 'PATCH',
+          headers: { ...this.getHeaders(), 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(body),
+        }
+      );
+      if (!res.ok) return { ok: false, error: `Error ${res.status}` };
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  static async listarDisciplinas(baseId: string): Promise<{ ok: boolean; data?: any[]; error?: string }> {
+    try {
+      const url = this.getUrl();
+      if (!url) return { ok: false, error: 'Sin URL' };
+      const res = await fetch(
+        `${url}/rest/v1/base_disciplinas?base_id=eq.${encodeURIComponent(baseId)}&order=piso.asc,nombre.asc`,
+        { headers: this.getHeaders() }
+      );
+      if (!res.ok) return { ok: false, error: `Error ${res.status}` };
+      const data = await res.json();
+      return { ok: true, data: Array.isArray(data) ? data : [] };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  static async crearDisciplina(payload: Record<string, any>): Promise<{ ok: boolean; data?: any; error?: string }> {
+    try {
+      const url = this.getUrl();
+      if (!url) return { ok: false, error: 'Sin URL' };
+      const res = await fetch(
+        `${url}/rest/v1/base_disciplinas`,
+        {
+          method: 'POST',
+          headers: { ...this.getHeaders(), 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify(payload),
+        }
+      );
+      if (!res.ok) return { ok: false, error: `Error ${res.status}` };
+      const data = await res.json();
+      return { ok: true, data: Array.isArray(data) ? data[0] : data };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  static async actualizarDisciplina(id: string, payload: Record<string, any>): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const url = this.getUrl();
+      if (!url) return { ok: false, error: 'Sin URL' };
+      const res = await fetch(
+        `${url}/rest/v1/base_disciplinas?id=eq.${encodeURIComponent(id)}`,
+        {
+          method: 'PATCH',
+          headers: { ...this.getHeaders(), 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(payload),
+        }
+      );
+      if (!res.ok) return { ok: false, error: `Error ${res.status}` };
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  static async eliminarDisciplina(id: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const url = this.getUrl();
+      if (!url) return { ok: false, error: 'Sin URL' };
+      const res = await fetch(
+        `${url}/rest/v1/base_disciplinas?id=eq.${encodeURIComponent(id)}`,
+        { method: 'DELETE', headers: this.getHeaders() }
+      );
+      if (!res.ok) return { ok: false, error: `Error ${res.status}` };
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  static async obtenerStatsBase(baseId: string): Promise<{ ok: boolean; data?: any; error?: string }> {
+    try {
+      const url = this.getUrl();
+      if (!url) return { ok: false, error: 'Sin URL' };
+      const headers = this.getHeaders();
+
+      const [rPersonas, rPagos, rAsistencias] = await Promise.all([
+        fetch(`${url}/rest/v1/perfiles?base_misiones_id=eq.${encodeURIComponent(baseId)}&select=id,estado_solvencia`, { headers }),
+        fetch(`${url}/rest/v1/pagos?base_misiones_id=eq.${encodeURIComponent(baseId)}&select=monto_bs,monto_usd,creado_en`, { headers }),
+        fetch(`${url}/rest/v1/asistencias?base_misiones_id=eq.${encodeURIComponent(baseId)}&select=id,fecha`, { headers }),
+      ]);
+
+      const personas     = rPersonas.ok ? await rPersonas.json() : [];
+      const pagos        = rPagos.ok ? await rPagos.json() : [];
+      const asistencias  = rAsistencias.ok ? await rAsistencias.json() : [];
+
+      const personasArr   = Array.isArray(personas) ? personas : [];
+      const pagosArr      = Array.isArray(pagos) ? pagos : [];
+      const asistenciasArr = Array.isArray(asistencias) ? asistencias : [];
+
+      const ingresos_bs  = pagosArr.reduce((s: number, p: any) => s + (Number(p.monto_bs) || 0), 0);
+      const ingresos_usd = pagosArr.reduce((s: number, p: any) => s + (Number(p.monto_usd) || 0), 0);
+      const personas_activas = personasArr.filter((p: any) => {
+        const e = (p.estado_solvencia || '').toLowerCase();
+        return e === 'activo' || e === 'solvente';
+      }).length;
+
+      return {
+        ok: true,
+        data: {
+          total_personas: personasArr.length,
+          total_pagos: pagosArr.length,
+          total_asistencias: asistenciasArr.length,
+          personas_activas,
+          ingresos_bs,
+          ingresos_usd,
+        }
+      };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  static async listarReportes(baseId: string, tipo?: string): Promise<{ ok: boolean; data?: any[]; error?: string }> {
+    try {
+      const url = this.getUrl();
+      if (!url) return { ok: false, error: 'Sin URL' };
+      let endpoint = `${url}/rest/v1/base_reportes?base_id=eq.${encodeURIComponent(baseId)}&order=generado_en.desc&limit=50`;
+      if (tipo) endpoint += `&tipo=eq.${encodeURIComponent(tipo)}`;
+      const res = await fetch(endpoint, { headers: this.getHeaders() });
+      if (!res.ok) return { ok: false, error: `Error ${res.status}` };
+      const data = await res.json();
+      return { ok: true, data: Array.isArray(data) ? data : [] };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  static async generarReporteManual(
+    baseId: string,
+    tipo: 'semanal' | 'mensual',
+    datos_json: Record<string, any>,
+    periodo: string,
+    generado_por: string
+  ): Promise<{ ok: boolean; data?: any; error?: string }> {
+    try {
+      const url = this.getUrl();
+      if (!url) return { ok: false, error: 'Sin URL' };
+      const payload = { base_id: baseId, tipo, periodo, datos_json, generado_por };
+      const res = await fetch(`${url}/rest/v1/base_reportes`, {
+        method: 'POST',
+        headers: { ...this.getHeaders(), 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return { ok: false, error: `Error ${res.status}` };
+      const data = await res.json();
+      return { ok: true, data: Array.isArray(data) ? data[0] : data };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  static async listarPersonasBase(baseId: string): Promise<{ ok: boolean; data?: any[]; error?: string }> {
+    try {
+      const url = this.getUrl();
+      if (!url) return { ok: false, error: 'Sin URL' };
+      const res = await fetch(
+        `${url}/rest/v1/perfiles?base_misiones_id=eq.${encodeURIComponent(baseId)}&select=id,nombres,apellidos,cedula,estado_solvencia,plan_activo,tipo_membresia,fecha_vencimiento&order=apellidos.asc&limit=500`,
+        { headers: this.getHeaders() }
+      );
+      if (!res.ok) return { ok: false, error: `Error ${res.status}` };
+      const data = await res.json();
+      return { ok: true, data: Array.isArray(data) ? data : [] };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  }
 }
+

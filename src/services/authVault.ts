@@ -14,6 +14,7 @@ export interface UsuarioGuardado {
   estado_asignado: string;
   municipio_asignado?: string;
   parroquia_asignada?: string;
+  base_misiones_nombre?: string;
   cuenta_verificada: boolean;
   creado_en: string;
   ultimo_acceso?: string;
@@ -151,10 +152,11 @@ export class AuthVaultService {
         }
       });
 
-      let rolServidor: RolUsuario = 'operador_base';
+      let rolServidor: RolUsuario = 'administrador_base';
       let estadoServidor = 'Distrito Capital';
       let munServidor = 'Libertador';
       let parrServidor = 'Sucre';
+      let baseMisionesServidor = '';
       let cedulaServidor = remoteAuth.user.user_metadata?.cedula || 'V-00000000';
       let nombresServidor = remoteAuth.user.user_metadata?.nombres || 'Operador';
       let apellidosServidor = remoteAuth.user.user_metadata?.apellidos || 'Paz y Vida';
@@ -168,6 +170,7 @@ export class AuthVaultService {
           estadoServidor = p.estado_asignado || estadoServidor;
           munServidor = p.municipio_asignado || munServidor;
           parrServidor = p.parroquia_asignada || parrServidor;
+          baseMisionesServidor = p.base_misiones_nombre || '';
           cedulaServidor = p.cedula || cedulaServidor;
           nombresServidor = p.nombres || nombresServidor;
           apellidosServidor = p.apellidos || apellidosServidor;
@@ -194,6 +197,7 @@ export class AuthVaultService {
         usuarios[locIdx].estado_asignado = estadoServidor;
         usuarios[locIdx].municipio_asignado = munServidor;
         usuarios[locIdx].parroquia_asignada = parrServidor;
+        usuarios[locIdx].base_misiones_nombre = baseMisionesServidor;
         usuarios[locIdx].nombre = nombresServidor;
         usuarios[locIdx].apellido = apellidosServidor;
         usuarios[locIdx].cuenta_verificada = true;
@@ -211,6 +215,7 @@ export class AuthVaultService {
           estado_asignado: estadoServidor,
           municipio_asignado: munServidor,
           parroquia_asignada: parrServidor,
+          base_misiones_nombre: baseMisionesServidor,
           cuenta_verificada: true,
           creado_en: new Date().toISOString(),
           ultimo_acceso: new Date().toISOString()
@@ -230,6 +235,7 @@ export class AuthVaultService {
           estado_asignado: estadoServidor,
           municipio_asignado: munServidor,
           parroquia_asignada: parrServidor,
+          base_misiones_nombre: baseMisionesServidor,
           saime_validado: true
         }
       };
@@ -266,6 +272,7 @@ export class AuthVaultService {
         estado_asignado: target.estado_asignado,
         municipio_asignado: target.municipio_asignado,
         parroquia_asignada: target.parroquia_asignada,
+        base_misiones_nombre: target.base_misiones_nombre || '',
         saime_validado: true
       }
     };

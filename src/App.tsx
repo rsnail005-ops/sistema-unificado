@@ -19,8 +19,10 @@ import { StorageService } from './services/storage';
 import { AuthVaultService } from './services/authVault';
 import { UpdateService, AppRelease } from './services/updateService';
 import { RealtimeService } from './services/realtimeService';
-import { UsuarioSesion, isDeveloperSesion } from './types';
+import { UsuarioSesion, puedeModificarPrograma, puedeVerNacional, isAdministradorBase } from './types';
 import { APP_VERSION } from './version';
+import { BibliotecaLayout } from './components/biblioteca/BibliotecaLayout';
+import { MiBaseView } from './components/MiBaseView';
 
 const LAST_ACTIVE_VERSION_KEY = 'mpv_last_active_version';
 
@@ -51,7 +53,7 @@ export const App: React.FC = () => {
   const [pendingRelease, setPendingRelease] = useState<AppRelease | null>(null);
 
   useEffect(() => {
-    StorageService.inicializarDatosDemo();
+    StorageService.inicializarApp();
     AuthVaultService.inicializarBoveda();
 
     const handleSessionChange = () => {
@@ -127,9 +129,14 @@ export const App: React.FC = () => {
     }
   };
 
-  // Si no ha iniciado sesión, mostrar pantalla de login
+  // Si no ha iniciado sesion, mostrar pantalla de login
   if (!sesion) {
     return <LoginScreen onLoginSuccess={(usuario) => setSesion(usuario)} />;
+  }
+
+  // Desarrollador y Admin Nacional → Biblioteca de Bases (layout completamente diferente)
+  if (puedeVerNacional(sesion)) {
+    return <BibliotecaLayout sesion={sesion} />;
   }
 
   return (
@@ -157,7 +164,7 @@ export const App: React.FC = () => {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} sesion={sesion} />
 
         <main className="main-content">
-          {activeTab === 'dashboard' && <DashboardView onNavigate={handleNavigate} />}
+          {activeTab === 'dashboard' && <DashboardView onNavigate={handleNavigate} sesion={sesion} />}
           {activeTab === 'gimnasio' && <GimnasioView sesion={sesion} />}
           {activeTab === 'pagos' && <PagosView sesion={sesion} />}
           {activeTab === 'asistencia' && <AsistenciaView sesion={sesion} />}
@@ -178,8 +185,11 @@ export const App: React.FC = () => {
           {activeTab === 'documentos' && <DocumentosView sesion={sesion} />}
           {activeTab === 'sync' && <SyncQueueView sesion={sesion} />}
           {activeTab === 'importador' && <ImportadorView sesion={sesion} />}
-          {activeTab === 'developer' && isDeveloperSesion(sesion) && (
+          {activeTab === 'developer' && puedeModificarPrograma(sesion) && (
             <DeveloperPanel sesion={sesion} />
+          )}
+          {activeTab === 'mi-base' && isAdministradorBase(sesion) && (
+            <MiBaseView sesion={sesion} />
           )}
         </main>
       </div>

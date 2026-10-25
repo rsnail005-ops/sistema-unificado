@@ -29,13 +29,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   };
 
   const handleReiniciarDatos = () => {
-    if (confirm('¿Desea restablecer los registros locales? Se mantendrán las cuentas de usuario y la sesión.')) {
-      localStorage.removeItem('mpv_registros_data_v1');
-      localStorage.removeItem('mpv_sync_queue_v1');
-      StorageService.inicializarDatosDemo();
+    if (confirm('¿Desea limpiar el caché local? Los datos se volverán a descargar del servidor al reiniciar sesión.')) {
+      localStorage.removeItem('mpv_registros_v1');
+      localStorage.removeItem('mpv_cola_sync_v1');
+      localStorage.removeItem('mpv_pagos_v1');
+      localStorage.removeItem('mpv_asistencias_v1');
+      localStorage.removeItem('mpv_audit_log_v1');
+      StorageService.inicializarApp();
       window.dispatchEvent(new CustomEvent('mpv-data-updated'));
       window.dispatchEvent(new CustomEvent('mpv-sync-updated'));
-      alert('Registros locales restablecidos correctamente.');
+      alert('Caché local limpiado. Los datos se sincronizarán desde el servidor.');
       onClose();
     }
   };

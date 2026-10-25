@@ -1,6 +1,6 @@
 {
   "name": "movimiento-paz-vida-desktop",
-  "version": "1.5.3",
+  "version": "1.6.2",
   "description": "Sistema Unificado de Usuarios GNP - Aplicación Nacional de Gestión",
   "main": "electron/main.cjs",
   "author": "GNP - Sistema Unificado de Usuarios",
@@ -64,6 +64,16 @@
         "dir"
       ],
       "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "${productName}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable.${ext}"
     }
   }
 }

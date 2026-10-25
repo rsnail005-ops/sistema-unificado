@@ -10,6 +10,8 @@ export interface AppRelease {
   obligatoria: boolean;
   publicado_en: string;
   publicado_por: string;
+  fileName?: string;
+  isSetup?: boolean;
 }
 
 /** Versión base compilada del sistema */
@@ -59,6 +61,7 @@ export class UpdateService {
               ? item.assets.find((a: any) => a.name && (a.name.endsWith('.exe') || a.name.endsWith('.AppImage')))
               : null;
             if (exeAsset && exeAsset.browser_download_url) {
+              const assetName = exeAsset.name || '';
               ghRelease = {
                 id: String(item.id || item.tag_name),
                 version: String(item.tag_name || '').replace(/^v/, '').trim(),
@@ -68,6 +71,8 @@ export class UpdateService {
                 obligatoria: false,
                 publicado_en: item.published_at || new Date().toISOString(),
                 publicado_por: item.author?.login || 'rsnail005-ops',
+                fileName: assetName,
+                isSetup: assetName.toLowerCase().includes('setup'),
               };
               break;
             }
@@ -162,15 +167,69 @@ export class UpdateService {
   }
 
   /**
+   * Obtiene las carpetas del sistema y el directorio actual de la aplicación
+   */
+  static async obtenerCarpetasPorDefecto(): Promise<{
+    currentDir: string;
+    currentExe: string;
+    downloadsDir: string;
+    desktopDir: string;
+    tempDir: string;
+  } | null> {
+    if (typeof window === 'undefined' || !(window as any).require) return null;
+    try {
+      const electron = (window as any).require('electron');
+      return await electron.ipcRenderer.invoke('updater:getDefaultDir');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Abre un cuadro de diálogo nativo de Windows para seleccionar la carpeta de destino
+   */
+  static async seleccionarCarpeta(defaultPath?: string): Promise<string | null> {
+    if (typeof window === 'undefined' || !(window as any).require) return null;
+    try {
+      const electron = (window as any).require('electron');
+      const res = await electron.ipcRenderer.invoke('updater:selectFolder', defaultPath);
+      if (res && !res.canceled && res.folderPath) {
+        return res.folderPath;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Abre la carpeta o resalta el archivo en el Explorador de archivos de Windows
+   */
+  static async abrirCarpeta(targetPath: string): Promise<boolean> {
+    if (typeof window === 'undefined' || !(window as any).require) return false;
+    try {
+      const electron = (window as any).require('electron');
+      const res = await electron.ipcRenderer.invoke('updater:openFolder', targetPath);
+      return Boolean(res && res.ok);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Descarga el instalador usando el IPC de Electron con reporte de progreso.
    * @param downloadUrl  URL directa al .exe en GitHub Releases
    * @param onProgress   Callback (0-100)
-   * @returns Ruta local al instalador descargado
+   * @param fileName     Nombre original del archivo (opcional)
+   * @param targetFolder Carpeta de destino elegida por el usuario (opcional)
+   * @returns Información de la descarga completada
    */
   static async descargarInstalador(
     downloadUrl: string,
-    onProgress: (pct: number) => void
-  ): Promise<string> {
+    onProgress: (pct: number) => void,
+    fileName?: string,
+    targetFolder?: string
+  ): Promise<{ path: string; targetFolder: string; fileName: string }> {
     if (typeof window === 'undefined' || !(window as any).require) {
       throw new Error('La descarga requiere la versión de escritorio.');
     }
@@ -181,23 +240,53 @@ export class UpdateService {
     });
 
     try {
-      const result: { ok: boolean; path?: string; error?: string } =
-        await electron.ipcRenderer.invoke('update:download', { downloadUrl });
+      const result: {
+        ok: boolean;
+        path?: string;
+        targetFolder?: string;
+        fileName?: string;
+        error?: string;
+      } = await electron.ipcRenderer.invoke('update:download', {
+        downloadUrl,
+        fileName,
+        targetFolder
+      });
 
       if (!result.ok || !result.path) {
         throw new Error(result.error || 'Error descargando actualización.');
       }
-      return result.path;
+      return {
+        path: result.path,
+        targetFolder: result.targetFolder || '',
+        fileName: result.fileName || ''
+      };
     } finally {
       electron.ipcRenderer.removeAllListeners('update:progress');
     }
   }
 
-  /** Lanza el instalador descargado, elimina la versión anterior, renombra a la versión reciente y cierra la app */
-  static async lanzarInstalador(installerPath: string, newVersion?: string): Promise<void> {
+  /**
+   * Ejecuta el reemplazo in-situ o lanzador de instalación formal
+   */
+  static async lanzarInstalador(
+    installerPath: string,
+    newVersion?: string,
+    isSetup?: boolean,
+    assetName?: string,
+    targetFolder?: string
+  ): Promise<void> {
     if (typeof window === 'undefined' || !(window as any).require) return;
     const electron = (window as any).require('electron');
-    await electron.ipcRenderer.invoke('update:launch', { installerPath, newVersion });
+    const res = await electron.ipcRenderer.invoke('update:launch', {
+      installerPath,
+      newVersion,
+      isSetup,
+      assetName,
+      targetFolder
+    });
+    if (res && res.ok === false) {
+      throw new Error(res.error || 'Error al iniciar el reemplazo de la aplicación.');
+    }
   }
 
   /** Publica un nuevo release en Supabase (solo rol developer) */

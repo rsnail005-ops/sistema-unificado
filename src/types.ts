@@ -1,6 +1,14 @@
 export type TipoRegistro = 'persona' | 'evento' | 'documento' | 'reporte';
 
-export type RolUsuario = 'developer' | 'superadmin_nacional' | 'coordinador_estadal' | 'operador_base' | 'operador_municipal';
+export type RolUsuario = 
+  | 'desarrollador'
+  | 'administrador_nacional'
+  | 'administrador_base'
+  | 'developer'
+  | 'superadmin_nacional'
+  | 'coordinador_estadal'
+  | 'operador_base'
+  | 'operador_municipal';
 
 export interface DocumentoAdjunto {
   id: string;
@@ -241,17 +249,52 @@ export interface UsuarioSesion {
   fecha_vigencia?: string;
 }
 
-export const isDeveloperSesion = (sesion: UsuarioSesion | null): boolean => {
+export const isDesarrollador = (sesion: UsuarioSesion | null): boolean => {
   if (!sesion) return false;
+  const rol = (sesion.rol || '').toLowerCase();
   const cedula = sesion.cedula || '';
-  const nombres = sesion.nombres || '';
-  const correo = sesion.correo || '';
+  const nombres = (sesion.nombres || '').toLowerCase();
+  const correo = (sesion.correo || '').toLowerCase();
   return (
-    sesion.rol === 'developer' ||
+    rol === 'desarrollador' ||
+    rol === 'developer' ||
     cedula === 'V-99000001' ||
-    nombres.toLowerCase().includes('desarrollador') ||
-    correo.toLowerCase().includes('rsnail')
+    nombres.includes('desarrollador') ||
+    correo.includes('rsnail')
   );
+};
+
+export const isDeveloperSesion = isDesarrollador;
+
+export const isAdministradorNacional = (sesion: UsuarioSesion | null): boolean => {
+  if (!sesion) return false;
+  const rol = (sesion.rol || '').toLowerCase();
+  return rol === 'administrador_nacional' || rol === 'superadmin_nacional';
+};
+
+export const isAdministradorBase = (sesion: UsuarioSesion | null): boolean => {
+  if (!sesion) return false;
+  if (isDesarrollador(sesion) || isAdministradorNacional(sesion)) return false;
+  const rol = (sesion.rol || '').toLowerCase();
+  return (
+    rol === 'administrador_base' ||
+    rol === 'operador_base' ||
+    rol === 'operador_municipal' ||
+    rol === 'coordinador_estadal'
+  );
+};
+
+export const puedeModificarPrograma = (sesion: UsuarioSesion | null): boolean => {
+  return isDesarrollador(sesion);
+};
+
+export const puedeVerNacional = (sesion: UsuarioSesion | null): boolean => {
+  return isDesarrollador(sesion) || isAdministradorNacional(sesion);
+};
+
+export const obtenerBaseAsignada = (sesion: UsuarioSesion | null): string => {
+  if (!sesion) return '';
+  return (sesion.base_misiones_nombre || '').trim();
 };
 
 export interface AuditLogEntry {
@@ -263,3 +306,77 @@ export interface AuditLogEntry {
   detalles: string;
   fecha: string;
 }
+
+// ─── Biblioteca de Bases de Misiones ───────────────────────────────────────
+
+export interface BaseMision {
+  id: string;               // 'base-001' … 'base-035'
+  nombre: string;
+  estado: string;
+  municipio?: string;
+  direccion?: string;
+  administrador?: string;
+  pisos_config?: Record<string, any>;
+  activa: boolean;
+  creado_en: string;
+  actualizado_en?: string;
+}
+
+export interface HorarioDisciplina {
+  dia: string;
+  hora_inicio: string;
+  hora_fin: string;
+}
+
+export interface BaseDisciplina {
+  id: string;
+  base_id: string;
+  nombre: string;
+  piso: string;             // 'Recepción', 'Piso 1' … 'Piso 5'
+  tutor?: string;
+  horarios?: HorarioDisciplina[];
+  precio_bs?: number;
+  precio_usd?: number;
+  activa: boolean;
+  creado_en: string;
+}
+
+export interface BaseReporte {
+  id: string;
+  base_id: string;
+  tipo: 'semanal' | 'mensual';
+  periodo: string;          // '2025-W42' o '2025-10'
+  datos_json: {
+    total_personas?: number;
+    total_pagos?: number;
+    total_asistencias?: number;
+    personas_activas?: number;
+    ingresos_bs?: number;
+    ingresos_usd?: number;
+    disciplinas?: Array<{ nombre: string; piso: string; inscritos: number }>;
+    [key: string]: any;
+  };
+  generado_en: string;
+  generado_por: string;
+}
+
+export interface BaseStats {
+  total_personas: number;
+  total_pagos: number;
+  total_asistencias: number;
+  personas_activas: number;
+  ingresos_bs: number;
+  ingresos_usd: number;
+}
+
+export const PISOS_BASE = [
+  'Recepción',
+  'Piso 1',
+  'Piso 2',
+  'Piso 3',
+  'Piso 4',
+  'Piso 5',
+] as const;
+
+export type PisoBase = typeof PISOS_BASE[number];
+

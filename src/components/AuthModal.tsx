@@ -76,19 +76,59 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <span>Cédula: <strong>{sesion.cedula}</strong> (Validada)</span>
                   </div>
                   
-                  <div style={{ marginTop: '12px', padding: '10px 12px', background: 'rgba(0, 0, 0, 0.2)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                    <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
-                      Rol en Servidor: <strong style={{ color: '#f59e0b', fontSize: '13px' }}>{sesion.rol.replace(/_/g, ' ').toUpperCase()}</strong>
+                  <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0, 0, 0, 0.25)', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nivel de Acceso:</span>
+                      {sesion.rol === 'desarrollador' && (
+                        <span style={{ background: 'rgba(168, 85, 247, 0.2)', border: '1px solid rgba(168, 85, 247, 0.4)', color: '#c084fc', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
+                          ⚡ DESARROLLADOR
+                        </span>
+                      )}
+                      {sesion.rol === 'administrador_nacional' && (
+                        <span style={{ background: 'rgba(56, 189, 248, 0.2)', border: '1px solid rgba(56, 189, 248, 0.4)', color: '#38bdf8', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
+                          🇻🇪 ADMIN NACIONAL
+                        </span>
+                      )}
+                      {sesion.rol === 'administrador_base' && (
+                        <span style={{ background: 'rgba(245, 158, 11, 0.2)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#fbbf24', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700 }}>
+                          📍 ADMIN DE BASE
+                        </span>
+                      )}
                     </div>
-                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+
+                    {sesion.base_misiones_nombre && (
+                      <div style={{ fontSize: '12px', color: '#fbbf24', marginBottom: '6px', fontWeight: 600 }}>
+                        Base Asignada: <strong>{sesion.base_misiones_nombre}</strong>
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>
                       Jurisdicción: <strong style={{ color: '#e2e8f0' }}>{sesion.estado_asignado}</strong>
                       {sesion.municipio_asignado ? ` • ${sesion.municipio_asignado}` : ''}
+                    </div>
+
+                    <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: '1.4', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      {sesion.rol === 'desarrollador' && (
+                        <span style={{ color: '#c084fc' }}>
+                          ✓ Acceso total ilimitado: consola de desarrollador, publicación de versiones, bases y datos nacionales.
+                        </span>
+                      )}
+                      {sesion.rol === 'administrador_nacional' && (
+                        <span style={{ color: '#93c5fd' }}>
+                          ✓ Visibilidad de todos los datos nacionales. Restricción: no puede modificar el programa ni publicar versiones.
+                        </span>
+                      )}
+                      {sesion.rol === 'administrador_base' && (
+                        <span style={{ color: '#fde68a' }}>
+                          ✓ Visibilidad exclusiva de su base de misiones. Restricción: no puede ver datos de otras bases ni modificar el programa.
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#60a5fa' }}>
                     <Server size={13} />
-                    <span>Permisos verificados por Supabase Cloud</span>
+                    <span>Permisos sincronizados con el servidor Supabase</span>
                   </div>
                 </div>
               </div>

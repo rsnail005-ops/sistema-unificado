@@ -514,11 +514,11 @@ export const ImportadorView: React.FC<ImportadorViewProps> = ({ sesion }) => {
       filename = 'Plantilla_Oficial_Atletas.xlsx';
       headers = [
         {
-          Cedula: 'V-18452391',
-          Nombre: 'Carlos Eduardo',
-          Apellido: 'Mendoza Pérez',
+          Cedula: 'V-12345678',
+          Nombre: 'Juan Carlos',
+          Apellido: 'Pérez Rodríguez',
           Telefono: '0414-1234567',
-          Correo: 'carlos.mendoza@gmail.com',
+          Correo: 'juan.perez@correo.com',
           Fecha_Nacimiento: '1995-04-12',
           Genero: 'Masculino',
           Disciplina: 'Musculación / Gimnasio',
@@ -526,11 +526,11 @@ export const ImportadorView: React.FC<ImportadorViewProps> = ({ sesion }) => {
           Municipio: 'Libertador'
         },
         {
-          Cedula: 'V-20194827',
-          Nombre: 'Yusmeidy Carolina',
-          Apellido: 'Pérez Gómez',
+          Cedula: 'E-23456789',
+          Nombre: 'María González',
+          Apellido: 'Torres',
           Telefono: '0412-9876543',
-          Correo: 'yusmeidy@gmail.com',
+          Correo: 'maria.gonzalez@correo.com',
           Fecha_Nacimiento: '1998-09-25',
           Genero: 'Femenino',
           Disciplina: 'Bailoterapia / Fitness',
@@ -542,8 +542,8 @@ export const ImportadorView: React.FC<ImportadorViewProps> = ({ sesion }) => {
       filename = 'Plantilla_Oficial_Pagos_Caja.xlsx';
       headers = [
         {
-          Cedula: 'V-18452391',
-          Nombre_Atleta: 'Carlos Eduardo Mendoza',
+          Cedula: 'V-12345678',
+          Nombre_Atleta: 'Juan Carlos Pérez',
           Monto_Bs: '182.50',
           Monto_USD: '5.00',
           Metodo_Pago: 'Pago Móvil',
@@ -554,8 +554,8 @@ export const ImportadorView: React.FC<ImportadorViewProps> = ({ sesion }) => {
           Estado: 'Distrito Capital'
         },
         {
-          Cedula: 'V-20194827',
-          Nombre_Atleta: 'Yusmeidy Carolina Pérez',
+          Cedula: 'E-23456789',
+          Nombre_Atleta: 'María González Torres',
           Monto_Bs: '365.00',
           Monto_USD: '10.00',
           Metodo_Pago: 'Punto de Venta',
@@ -570,8 +570,8 @@ export const ImportadorView: React.FC<ImportadorViewProps> = ({ sesion }) => {
       filename = 'Plantilla_Oficial_Asistencias.xlsx';
       headers = [
         {
-          Cedula: 'V-18452391',
-          Nombre_Atleta: 'Carlos Eduardo Mendoza',
+          Cedula: 'V-12345678',
+          Nombre_Atleta: 'Juan Carlos Pérez',
           Fecha: new Date().toISOString().split('T')[0],
           Hora_Entrada: '08:30 AM',
           Hora_Salida: '10:00 AM',
@@ -579,8 +579,8 @@ export const ImportadorView: React.FC<ImportadorViewProps> = ({ sesion }) => {
           Estado: 'Finalizado'
         },
         {
-          Cedula: 'V-20194827',
-          Nombre_Atleta: 'Yusmeidy Carolina Pérez',
+          Cedula: 'E-23456789',
+          Nombre_Atleta: 'María González Torres',
           Fecha: new Date().toISOString().split('T')[0],
           Hora_Entrada: '09:00 AM',
           Hora_Salida: '10:15 AM',

@@ -27,7 +27,6 @@ import {
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { BcvService, TasaBCVInfo } from '../services/bcvService';
-import { SaimeService } from '../services/saime';
 import { ESTADOS_VENEZUELA } from '../data/venezuela';
 import { 
   Registro, 
@@ -36,6 +35,8 @@ import {
   obtenerEstadoMembresia, 
   MetodoPago, 
   isDeveloperSesion,
+  puedeVerNacional,
+  isAdministradorBase,
   AsistenciaRegistro
 } from '../types';
 
@@ -57,10 +58,13 @@ export const GimnasioView: React.FC<GimnasioViewProps> = ({ sesion }) => {
   const [filtroMembresia, setFiltroMembresia] = useState<TabFiltroMembresia>('TODOS');
 
   // Aislamiento territorial por Estado y Base de Misiones
-  const isSuperUser = isDeveloperSesion(sesion) || sesion.rol === 'superadmin_nacional';
+  const isSuperUser = puedeVerNacional(sesion);
+  const esAdminBase = isAdministradorBase(sesion);
+  const baseAsignada = (sesion.base_misiones_nombre || '').trim();
+
   const [filtroEstado, setFiltroEstado] = useState<string>(isSuperUser ? 'TODOS' : (sesion.estado_asignado || 'TODOS'));
   const [filtroBaseMisiones, setFiltroBaseMisiones] = useState<string>(
-    isSuperUser ? '' : (sesion.base_misiones_nombre || '')
+    esAdminBase ? baseAsignada : (isSuperUser ? '' : baseAsignada)
   );
 
   // Modales
@@ -89,8 +93,6 @@ export const GimnasioView: React.FC<GimnasioViewProps> = ({ sesion }) => {
   const [formEstado, setFormEstado] = useState(sesion.estado_asignado || 'Distrito Capital');
   const [formSemanasIniciales, setFormSemanasIniciales] = useState<'1' | '2'>('1');
   const [formMontoInicial, setFormMontoInicial] = useState<string>('');
-  const [validandoSaime, setValidandoSaime] = useState(false);
-  const [saimeMensaje, setSaimeMensaje] = useState<string | null>(null);
 
   // Recarga reactiva
   const recargarDatos = () => {
@@ -126,9 +128,17 @@ export const GimnasioView: React.FC<GimnasioViewProps> = ({ sesion }) => {
     return mapa;
   }, [asistenciasHoy, hoyStr]);
 
-  // Filtrado de usuarios por Base de Misiones / Estado
+  // Filtrado de usuarios por Base de Misiones / Estado con aislamiento estricto
   const usuariosGym = useMemo(() => {
     return personas.filter(p => {
+      // 1. Si es Administrador de Base, filtrar estrictamente por su base
+      if (esAdminBase) {
+        if (!baseAsignada) return true;
+        const basePersona = (p.datos?.base_misiones || p.ubicacion?.comunidad || '').toLowerCase();
+        return basePersona.includes(baseAsignada.toLowerCase());
+      }
+
+      // 2. Si es Administrador Nacional o Desarrollador, aplicar filtros seleccionados libremente
       if (filtroEstado !== 'TODOS' && p.ubicacion?.estado !== filtroEstado) {
         return false;
       }
@@ -140,7 +150,7 @@ export const GimnasioView: React.FC<GimnasioViewProps> = ({ sesion }) => {
       }
       return true;
     });
-  }, [personas, filtroEstado, filtroBaseMisiones]);
+  }, [personas, filtroEstado, filtroBaseMisiones, esAdminBase, baseAsignada]);
 
   // Cálculo de KPIs
   const metricas = useMemo(() => {
@@ -262,28 +272,6 @@ export const GimnasioView: React.FC<GimnasioViewProps> = ({ sesion }) => {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Validación SAIME
-  useEffect(() => {
-    const clean = formCedula.replace(/[^0-9]/g, '');
-    if (clean.length >= 7) {
-      const timer = setTimeout(async () => {
-        setValidandoSaime(true);
-        const res = await SaimeService.verificarIdentidad(formCedula);
-        setValidandoSaime(false);
-        if (res.exito && res.ciudadano) {
-          setFormNombre(res.ciudadano.nombres);
-          setFormApellido(res.ciudadano.apellidos);
-          setFormGenero(res.ciudadano.genero as any);
-          setSaimeMensaje('✅ Cédula verificada en registro civil SAIME');
-        } else {
-          setSaimeMensaje('⚠️ No se encontró en SAIME. Puedes ingresar los datos manualmente.');
-        }
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      setSaimeMensaje(null);
-    }
-  }, [formCedula]);
 
   const handleGuardarNuevoUsuario = () => {
     if (!formCedula.trim() || !formNombre.trim()) {
@@ -523,7 +511,7 @@ export const GimnasioView: React.FC<GimnasioViewProps> = ({ sesion }) => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por cédula (ej: V-18452391) o nombre del usuario..."
+            placeholder="Buscar por cédula o nombre del usuario..."
             className="gym-search-input"
           />
           {searchTerm && (
@@ -951,22 +939,16 @@ export const GimnasioView: React.FC<GimnasioViewProps> = ({ sesion }) => {
             </div>
 
             <div className="modal-form-content">
-              {/* Cédula con SAIME */}
+              {/* Cédula de Identidad */}
               <div className="form-section">
                 <label className="section-label">Cédula de Identidad *</label>
-                <div className="input-with-icon">
-                  <input
-                    type="text"
-                    value={formCedula}
-                    onChange={(e) => setFormCedula(e.target.value.toUpperCase())}
-                    placeholder="Ej: V-18452391"
-                    className="gym-field"
-                  />
-                  {validandoSaime && (
-                    <span className="saime-loading">Consultando SAIME...</span>
-                  )}
-                </div>
-                {saimeMensaje && <div className="saime-msg">{saimeMensaje}</div>}
+                <input
+                  type="text"
+                  value={formCedula}
+                  onChange={(e) => setFormCedula(e.target.value.toUpperCase())}
+                  placeholder="Ej: V-12345678"
+                  className="gym-field"
+                />
               </div>
 
               {/* Nombre y Apellido */}
@@ -977,7 +959,7 @@ export const GimnasioView: React.FC<GimnasioViewProps> = ({ sesion }) => {
                     type="text"
                     value={formNombre}
                     onChange={(e) => setFormNombre(e.target.value)}
-                    placeholder="Carlos"
+                    placeholder="Ej. Juan"
                     className="gym-field"
                   />
                 </div>
@@ -987,7 +969,7 @@ export const GimnasioView: React.FC<GimnasioViewProps> = ({ sesion }) => {
                     type="text"
                     value={formApellido}
                     onChange={(e) => setFormApellido(e.target.value)}
-                    placeholder="Mendoza"
+                    placeholder="Ej. Pérez"
                     className="gym-field"
                   />
                 </div>

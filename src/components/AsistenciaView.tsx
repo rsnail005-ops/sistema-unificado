@@ -12,7 +12,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
-import { AsistenciaRegistro, UsuarioSesion, Registro } from '../types';
+import { AsistenciaRegistro, UsuarioSesion, Registro, isAdministradorBase, puedeVerNacional } from '../types';
 
 interface AsistenciaViewProps {
   sesion: UsuarioSesion;
@@ -39,8 +39,28 @@ export const AsistenciaView: React.FC<AsistenciaViewProps> = ({ sesion }) => {
     };
   }, []);
 
+  const esBaseAdmin = isAdministradorBase(sesion);
+  const baseAsignada = sesion.base_misiones_nombre?.trim().toLowerCase() || '';
+
+  // Filtrado estricto por alcance de base de misiones
+  const personasAlcance = personas.filter(p => {
+    if (!esBaseAdmin || !baseAsignada) return true;
+    const baseP = (p.datos.base_misiones || p.ubicacion?.comunidad || '').toLowerCase();
+    return baseP.includes(baseAsignada) || baseAsignada.includes(baseP);
+  });
+
+  const asistenciasAlcance = asistencias.filter(a => {
+    if (!esBaseAdmin || !baseAsignada) return true;
+    const baseA = (a.ubicacion?.comunidad || '').toLowerCase();
+    const operadorA = (a.registrado_por || '').toLowerCase();
+    return (
+      (baseA && (baseA.includes(baseAsignada) || baseAsignada.includes(baseA))) ||
+      operadorA === sesion.cedula.toLowerCase()
+    );
+  });
+
   const hoyStr = new Date().toISOString().split('T')[0];
-  const asistenciasHoy = asistencias.filter(a => a.fecha === hoyStr);
+  const asistenciasHoy = asistenciasAlcance.filter(a => a.fecha === hoyStr);
   const usuariosActivos = asistenciasHoy.filter(a => a.estado === 'Activo');
   const salidasHoy = asistenciasHoy.filter(a => a.estado === 'Finalizado');
 
@@ -48,8 +68,8 @@ export const AsistenciaView: React.FC<AsistenciaViewProps> = ({ sesion }) => {
     e.preventDefault();
     if (!cedulaInput.trim()) return;
 
-    // Buscar si existe en personas
-    const personaMatch = personas.find(p => 
+    // Buscar si existe en personas de su alcance
+    const personaMatch = personasAlcance.find(p => 
       p.datos.cedula.toLowerCase().includes(cedulaInput.trim().toLowerCase()) ||
       `${p.datos.nombre} ${p.datos.apellido}`.toLowerCase().includes(cedulaInput.trim().toLowerCase()) ||
       (p.datos.id_gbp && p.datos.id_gbp.toLowerCase().includes(cedulaInput.trim().toLowerCase()))
@@ -83,7 +103,7 @@ export const AsistenciaView: React.FC<AsistenciaViewProps> = ({ sesion }) => {
     StorageService.registrarSalidaAsistencia(asistenciaId, sesion.cedula);
   };
 
-  const asistenciasFiltradas = asistencias.filter(a => {
+  const asistenciasFiltradas = asistenciasAlcance.filter(a => {
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       return (
@@ -189,7 +209,7 @@ export const AsistenciaView: React.FC<AsistenciaViewProps> = ({ sesion }) => {
             <input
               type="text"
               className="form-input"
-              placeholder="Ej. V-18452391 o Carlos Mendoza o USUARIO-001"
+              placeholder="Buscar por cédula, nombre o ID Base de Paz..."
               value={cedulaInput}
               onChange={e => setCedulaInput(e.target.value)}
               required

@@ -3,18 +3,15 @@ import {
   Users, 
   UserPlus, 
   Search, 
-  ShieldCheck, 
   Download, 
   Trash2, 
   MapPin, 
-  CheckCircle, 
-  AlertCircle,
   Calendar as CalendarIcon
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { SaimeService } from '../services/saime';
 import { ESTADOS_VENEZUELA, obtenerMunicipiosDeEstado, obtenerParroquiasDeMunicipio } from '../data/venezuela';
-import { Registro, PersonaDatos, UsuarioSesion, EstadoMembresia, obtenerEstadoMembresia } from '../types';
+import { Registro, PersonaDatos, UsuarioSesion, EstadoMembresia, obtenerEstadoMembresia, isAdministradorBase, puedeVerNacional } from '../types';
 
 interface PersonasViewProps {
   sesion: UsuarioSesion | null;
@@ -23,9 +20,17 @@ interface PersonasViewProps {
 }
 
 export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenForm, onClearAutoOpen }) => {
+  const esBaseAdmin = !!(sesion && isAdministradorBase(sesion));
+  const baseAsignada = sesion?.base_misiones_nombre?.trim() || '';
+
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedEstadoFilter, setSelectedEstadoFilter] = useState('TODOS');
+  const [selectedEstadoFilter, setSelectedEstadoFilter] = useState(() => {
+    if (esBaseAdmin && sesion?.estado_asignado) {
+      return sesion.estado_asignado;
+    }
+    return 'TODOS';
+  });
   const [selectedMembresiaFilter, setSelectedMembresiaFilter] = useState('TODOS');
   
   // Lista reactiva de registros
@@ -82,15 +87,11 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
   const [tipoMembresia, setTipoMembresia] = useState<'Semanal' | 'Mensual' | 'Personalizada'>('Mensual');
   const [fechaVencimiento, setFechaVencimiento] = useState<string>(calcularFechaOffset(30));
 
-  // Selector geográfico en cascada
-  const [estadoSelect, setEstadoSelect] = useState('Distrito Capital');
-  const [municipioSelect, setMunicipioSelect] = useState('Libertador');
-  const [parroquiaSelect, setParroquiaSelect] = useState('Sucre (Catia)');
-  const [comunidad, setComunidad] = useState('');
-
-  // Feedback SAIME
-  const [isValidatingSaime, setIsValidatingSaime] = useState(false);
-  const [saimeStatus, setSaimeStatus] = useState<{ validado: boolean; mensaje: string } | null>(null);
+  // Selector geográfico en cascada con alcance de sesión
+  const [estadoSelect, setEstadoSelect] = useState(() => sesion?.estado_asignado || 'Distrito Capital');
+  const [municipioSelect, setMunicipioSelect] = useState(() => sesion?.municipio_asignado || 'Libertador');
+  const [parroquiaSelect, setParroquiaSelect] = useState(() => sesion?.parroquia_asignada || 'Sucre (Catia)');
+  const [comunidad, setComunidad] = useState(() => (esBaseAdmin ? baseAsignada : ''));
 
   const municipiosDisponibles = obtenerMunicipiosDeEstado(estadoSelect);
   const parroquiasDisponibles = obtenerParroquiasDeMunicipio(estadoSelect, municipioSelect);
@@ -112,48 +113,6 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
     setParroquiaSelect(parrs.length > 0 ? parrs[0] : '');
   };
 
-  // Auto-completado al escribir cédula
-  useEffect(() => {
-    const clean = cedulaInput.replace(/[^0-9]/g, '');
-    if (clean.length >= 6) {
-      const timer = setTimeout(async () => {
-        setIsValidatingSaime(true);
-        const res = await SaimeService.verificarIdentidad(cedulaInput);
-        setIsValidatingSaime(false);
-        if (res.exito && res.ciudadano) {
-          setNombre(res.ciudadano.nombres);
-          setApellido(res.ciudadano.apellidos);
-          if (res.ciudadano.fecha_nacimiento) setFechaNacimiento(res.ciudadano.fecha_nacimiento);
-          if (res.ciudadano.genero) setGenero(res.ciudadano.genero);
-          setSaimeStatus({ validado: true, mensaje: `Verificado: ${res.ciudadano.nombres} ${res.ciudadano.apellidos}` });
-        } else {
-          setSaimeStatus({ validado: false, mensaje: res.mensaje || 'No localizada en línea (ingreso manual)' });
-        }
-      }, 400);
-      return () => clearTimeout(timer);
-    } else {
-      setSaimeStatus(null);
-    }
-  }, [cedulaInput]);
-
-  const handleValidarSaime = async () => {
-    if (!cedulaInput.trim()) return;
-    setIsValidatingSaime(true);
-    setSaimeStatus(null);
-    const res = await SaimeService.verificarIdentidad(cedulaInput);
-    setIsValidatingSaime(false);
-    if (res.exito && res.ciudadano) {
-      setCedulaInput(res.ciudadano.cedula);
-      setNombre(res.ciudadano.nombres);
-      setApellido(res.ciudadano.apellidos);
-      if (res.ciudadano.fecha_nacimiento) setFechaNacimiento(res.ciudadano.fecha_nacimiento);
-      if (res.ciudadano.genero) setGenero(res.ciudadano.genero);
-      setSaimeStatus({ validado: true, mensaje: `Verificado: ${res.ciudadano.nombres} ${res.ciudadano.apellidos}` });
-    } else {
-      setSaimeStatus({ validado: false, mensaje: res.mensaje });
-    }
-  };
-
   const handleSeleccionarTipoMembresia = (tipo: 'Semanal' | 'Mensual' | 'Personalizada') => {
     setTipoMembresia(tipo);
     if (tipo === 'Semanal') {
@@ -172,6 +131,8 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
       return;
     }
 
+    const baseGuardar = esBaseAdmin ? baseAsignada : (comunidad.trim() || baseAsignada);
+
     const personaData: PersonaDatos = {
       nombre,
       apellido,
@@ -183,6 +144,7 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
       programa,
       disciplina_gbp: disciplinaGbp,
       rol_comunitario: rolComunitario,
+      base_misiones: baseGuardar,
       tipo_membresia: tipoMembresia,
       fecha_vencimiento: fechaVencimiento,
       estado_solvencia: estadoMembresiaCalculado,
@@ -196,7 +158,7 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
         estado: estadoSelect,
         municipio: municipioSelect,
         parroquia: parroquiaSelect,
-        comunidad
+        comunidad: baseGuardar
       }
     }, sesion?.cedula || 'V-00000000');
 
@@ -210,7 +172,6 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
     setTelefono('');
     setCorreo('');
     setObservaciones('');
-    setSaimeStatus(null);
   };
 
   const handleEliminar = (id: string) => {
@@ -222,8 +183,8 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
 
   const handleExportarCSV = () => {
     const rows = [
-      ['ID', 'Cédula', 'Nombre Completo', 'Disciplina', 'Membresía', 'Vencimiento', 'Estado', 'Estado Geo', 'Municipio', 'Parroquia'],
-      ...registros.map(r => {
+      ['ID', 'Cédula', 'Nombre Completo', 'Disciplina', 'Membresía', 'Vencimiento', 'Estado', 'Base de Misiones', 'Estado Geo', 'Municipio', 'Parroquia'],
+      ...filtrados.map(r => {
         const est = obtenerEstadoMembresia(r.datos.estado_solvencia, r.datos.fecha_vencimiento);
         return [
           r.id,
@@ -233,6 +194,7 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
           r.datos.tipo_membresia || 'Mensual',
           r.datos.fecha_vencimiento || '',
           est,
+          r.datos.base_misiones || r.ubicacion?.comunidad || '',
           r.ubicacion.estado,
           r.ubicacion.municipio,
           r.ubicacion.parroquia
@@ -251,7 +213,17 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
   };
 
   const filtrados = registros.filter(r => {
-    const texto = `${r.datos.nombre} ${r.datos.apellido} ${r.datos.cedula} ${r.datos.programa} ${r.datos.disciplina_gbp || ''} ${r.ubicacion.estado}`.toLowerCase();
+    // Si es administrador_base, aislamiento estricto por base de misiones asignada
+    if (esBaseAdmin && baseAsignada) {
+      const baseP = (r.datos.base_misiones || r.ubicacion?.comunidad || '').toLowerCase();
+      const baseAsigNorm = baseAsignada.toLowerCase();
+      const operador = (r.creado_por || '').toLowerCase();
+      const matchBase = baseP.includes(baseAsigNorm) || baseAsigNorm.includes(baseP);
+      const matchOperador = sesion?.cedula && operador === sesion.cedula.toLowerCase();
+      if (!matchBase && !matchOperador) return false;
+    }
+
+    const texto = `${r.datos.nombre} ${r.datos.apellido} ${r.datos.cedula} ${r.datos.programa} ${r.datos.disciplina_gbp || ''} ${r.ubicacion?.estado || ''} ${r.datos.base_misiones || ''} ${r.ubicacion?.comunidad || ''}`.toLowerCase();
     const matchText = texto.includes(searchTerm.toLowerCase());
     if (!matchText) return false;
 
@@ -333,17 +305,35 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
           {/* Filtro Geográfico */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <MapPin size={15} style={{ color: '#f59e0b' }} />
-            <select
-              className="form-select"
-              style={{ width: '180px' }}
-              value={selectedEstadoFilter}
-              onChange={e => setSelectedEstadoFilter(e.target.value)}
-            >
-              <option value="TODOS">Todos los Estados</option>
-              {ESTADOS_VENEZUELA.map(e => (
-                <option key={e.nombre} value={e.nombre}>{e.nombre}</option>
-              ))}
-            </select>
+            {esBaseAdmin ? (
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                color: '#fbbf24',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <span>Base: {baseAsignada || 'Asignada'}</span>
+                <span style={{ color: '#94a3b8', fontSize: '11px' }}>({sesion?.estado_asignado || 'Local'})</span>
+              </div>
+            ) : (
+              <select
+                className="form-select"
+                style={{ width: '190px' }}
+                value={selectedEstadoFilter}
+                onChange={e => setSelectedEstadoFilter(e.target.value)}
+              >
+                <option value="TODOS">Todos los Estados (Nacional)</option>
+                {ESTADOS_VENEZUELA.map(e => (
+                  <option key={e.nombre} value={e.nombre}>{e.nombre}</option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
       </div>
@@ -368,38 +358,20 @@ export const PersonasView: React.FC<PersonasViewProps> = ({ sesion, initialOpenF
 
             <form onSubmit={handleGuardar}>
               <div className="modal-body">
-                {/* Cédula y Validación SAIME */}
-                <div style={{ padding: '14px', background: 'rgba(37, 99, 235, 0.08)', borderRadius: '10px', border: '1px solid rgba(37, 99, 235, 0.25)', marginBottom: '18px' }}>
-                  <label className="form-label" style={{ color: '#93c5fd' }}>
+                {/* Cédula de Identidad */}
+                <div className="form-group" style={{ marginBottom: '18px' }}>
+                  <label className="form-label">
                     Cédula de Identidad *
                   </label>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <input
-                      type="text"
-                      placeholder="Ej: V-18452391"
-                      value={cedulaInput}
-                      onChange={e => setCedulaInput(e.target.value)}
-                      className="form-input"
-                      style={{ fontWeight: 600 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleValidarSaime}
-                      disabled={isValidatingSaime}
-                      className="btn btn-primary"
-                      style={{ whiteSpace: 'nowrap' }}
-                    >
-                      <ShieldCheck size={16} />
-                      <span>{isValidatingSaime ? 'Consultando...' : 'Consultar'}</span>
-                    </button>
-                  </div>
-
-                  {saimeStatus && (
-                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: saimeStatus.validado ? '#34d399' : '#f87171' }}>
-                      {saimeStatus.validado ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
-                      <span>{saimeStatus.mensaje}</span>
-                    </div>
-                  )}
+                  <input
+                    type="text"
+                    placeholder="Ej: V-12345678"
+                    value={cedulaInput}
+                    onChange={e => setCedulaInput(e.target.value)}
+                    className="form-input"
+                    style={{ fontWeight: 600 }}
+                    required
+                  />
                 </div>
 
                 {/* Datos Personales */}

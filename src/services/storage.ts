@@ -40,8 +40,8 @@ const DEFAULT_CONFIG: AppConfig = {
   modo_red: 'online',
   modo_manual_offline: false,
   auto_sync: true,
-  supabase_url: (import.meta as any).env?.VITE_SUPABASE_URL || 'https://oxliwrrrmefuisuzdtpr.supabase.co',
-  supabase_anon_key: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_XE6powc_BwOMu-vh3CY6tQ_OJq3m4Z5'
+  supabase_url: (import.meta as any).env?.VITE_SUPABASE_URL || 'https://jrjkuzjpabfaburppgtb.supabase.co',
+  supabase_anon_key: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_C-8wmkw92r-UMOrIdmqvAA_wQakDXZ7'
 };
 
 // Generador universal de identificadores UUID v4 compatible con Supabase y PostgreSQL
@@ -76,221 +76,115 @@ class HybridLogicalClock {
   }
 }
 
+// IDs de datos demo hardcodeados en versiones anteriores — se eliminan automáticamente
+// IDs y datos demo hardcodeados en versiones anteriores — purga total e inmediata
+const LEGACY_DEMO_REGISTRO_IDS = [
+  '018e3a2b-7c45-7123-89ab-cdef01234567',
+  '018e3a2b-7c45-7123-89ab-cdef01234568',
+  '018e3a2b-7c45-7123-89ab-cdef01234569',
+];
+const LEGACY_DEMO_SYNC_IDS = ['sync-demo-001', 'sync-demo-002', 'sync-demo-003', 'sync-demo-004'];
+const LEGACY_DEMO_PAGO_IDS = ['pago-001', 'pago-002'];
+const LEGACY_DEMO_ASIST_IDS = ['asist-001', 'asist-002'];
+const GHOST_USER_IDS = ['USUARIO-001', 'USUARIO-002'];
+const GHOST_CEDULAS = ['V-18452391', 'V-20194827', '18452391', '20194827'];
+const GHOST_NAMES = ['carlos eduardo mendoza', 'carlos mendoza', 'yusmeidy carolina pérez', 'yusmeidy perez', 'yusmeidy carolina perez'];
+
 export class StorageService {
-  // Inicialización de registros demo si está vacío
-  static inicializarDatosDemo() {
-    const existing = localStorage.getItem(STORAGE_KEYS.REGISTROS);
-    if (!existing || JSON.parse(existing).length === 0) {
-      const demoRegistros: Registro[] = [
-        {
-          id: '018e3a2b-7c45-7123-89ab-cdef01234567',
-          tipo: 'persona',
-          datos: {
-            nombre: 'Carlos Eduardo',
-            apellido: 'Mendoza Rivas',
-            cedula: 'V-18452391',
-            telefono: '+58 412 1234567',
-            correo: 'carlos.mendoza@pazvida.gob.ve',
-            fecha_nacimiento: '1988-05-14',
-            genero: 'Masculino',
-            programa: 'Canchas de Paz y Juventud',
-            rol_comunitario: 'Coordinador Parroquial',
-            observaciones: 'Promotor activo de torneos de fútbol sala en Catia.'
-          },
-          documentos: [],
-          ubicacion: {
-            estado: 'Distrito Capital',
-            municipio: 'Libertador',
-            parroquia: 'Sucre (Catia)',
-            comunidad: 'El Manguito'
-          },
-          creado_por: 'V-18452391',
-          creado_en: new Date(Date.now() - 86400000 * 3).toISOString(),
-          actualizado_en: new Date(Date.now() - 86400000 * 3).toISOString(),
-          sincronizado: true,
-          hlc_timestamp: HybridLogicalClock.now(),
-          version: 1
-        },
-        {
-          id: '018e3a2b-7c45-7123-89ab-cdef01234568',
-          tipo: 'persona',
-          datos: {
-            nombre: 'Yusmeidy Carolina',
-            apellido: 'Pérez Rondón',
-            cedula: 'V-20194827',
-            telefono: '+58 414 7654321',
-            correo: 'yusmeidy.perez@pazvida.gob.ve',
-            fecha_nacimiento: '1992-11-23',
-            genero: 'Femenino',
-            programa: 'Mujeres Constructoras de Paz',
-            rol_comunitario: 'Vocera de Prevención Integral',
-            observaciones: 'Encargada de talleres de convivencia ciudadana en Petare.'
-          },
-          documentos: [],
-          ubicacion: {
-            estado: 'Miranda',
-            municipio: 'Sucre',
-            parroquia: 'Petare',
-            comunidad: 'Zona Colonial'
-          },
-          creado_por: 'V-18452391',
-          creado_en: new Date(Date.now() - 86400000 * 2).toISOString(),
-          actualizado_en: new Date(Date.now() - 86400000 * 2).toISOString(),
-          sincronizado: true,
-          hlc_timestamp: HybridLogicalClock.now(),
-          version: 1
-        },
-        {
-          id: '018e3a2b-7c45-7123-89ab-cdef01234569',
-          tipo: 'evento',
-          datos: {
-            titulo: 'Mega Jornada Deportiva y Prevención "Cero Violencia"',
-            tipo_actividad: 'Deportiva',
-            fecha: '2026-09-18',
-            lugar: 'Polideportivo Parque Miranda, Sebucán',
-            asistentes_estimados: 450,
-            coordinador_responsable: 'Carlos Mendoza',
-            descripcion: 'Torneo inter-comunidades con entrega de balones, clínicas formativas y mesas de mediación de paz.'
-          },
-          documentos: [],
-          ubicacion: {
-            estado: 'Miranda',
-            municipio: 'Sucre',
-            parroquia: 'Leoncio Martínez',
-            comunidad: 'Sebucán'
-          },
-          creado_por: 'V-18452391',
-          creado_en: new Date(Date.now() - 86400000).toISOString(),
-          actualizado_en: new Date(Date.now() - 86400000).toISOString(),
-          sincronizado: true,
-          hlc_timestamp: HybridLogicalClock.now(),
-          version: 1
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.REGISTROS, JSON.stringify(demoRegistros));
-    }
+  /**
+   * Elimina completamente cualquier usuario fantasma o dato demo que haya quedado en localStorage.
+   * Se ejecuta automáticamente al arrancar la aplicación.
+   */
+  static limpiarDemosLegacy() {
+    try {
+      const isGhost = (item: any) => {
+        if (!item) return false;
+        const ced = String(item.usuario_cedula || item.cedula || '').replace(/[^0-9]/g, '');
+        const nom = String(item.usuario_nombre || item.nombre || item.Nombre_Atleta || '').toLowerCase();
+        const uid = String(item.usuario_id || item.id || '');
+        if (GHOST_USER_IDS.includes(uid)) return true;
+        if (GHOST_CEDULAS.some(c => c.includes(ced) && ced.length > 4)) return true;
+        if (GHOST_NAMES.some(n => nom.includes(n))) return true;
+        return false;
+      };
 
-    // Inicializar cola de sincronización inicial si está vacía
-    if (!localStorage.getItem(STORAGE_KEYS.COLA_SYNC) || JSON.parse(localStorage.getItem(STORAGE_KEYS.COLA_SYNC) || '[]').length === 0) {
-      const now = Date.now();
-      const demoQueue: SyncItem[] = [
-        {
-          id: 'sync-demo-001',
-          registro_id: '018e3a2b-7c45-7123-89ab-cdef01234567',
-          operacion: 'INSERT',
-          payload: {
-            id: '018e3a2b-7c45-7123-89ab-cdef01234567',
-            tipo: 'persona',
-            datos: {
-              nombre: 'Carlos Eduardo',
-              apellido: 'Mendoza Rivas',
-              cedula: 'V-18452391',
-              telefono: '+58 412 1234567',
-              correo: 'carlos.mendoza@pazvida.gob.ve',
-              programa: 'Canchas de Paz y Juventud'
-            }
-          },
-          hlc_timestamp: HybridLogicalClock.now(),
-          intentos: 1,
-          estado: 'sincronizado',
-          creado_en: new Date(now - 3600000 * 4).toISOString(),
-          hora_sincronizado: new Date(now - 3600000 * 3.8).toISOString(),
-          tipo_entidad: 'persona',
-          resumen: 'Carlos Eduardo Mendoza Rivas (V-18452391)',
-          servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
-        },
-        {
-          id: 'sync-demo-002',
-          registro_id: '018e3a2b-7c45-7123-89ab-cdef01234568',
-          operacion: 'INSERT',
-          payload: {
-            id: '018e3a2b-7c45-7123-89ab-cdef01234568',
-            tipo: 'persona',
-            datos: {
-              nombre: 'Yusmeidy Carolina',
-              apellido: 'Pérez Rondón',
-              cedula: 'V-20194827',
-              telefono: '+58 414 7654321',
-              correo: 'yusmeidy.perez@pazvida.gob.ve',
-              programa: 'Mujeres Constructoras de Paz'
-            }
-          },
-          hlc_timestamp: HybridLogicalClock.now(),
-          intentos: 1,
-          estado: 'sincronizado',
-          creado_en: new Date(now - 3600000 * 2).toISOString(),
-          hora_sincronizado: new Date(now - 3600000 * 1.9).toISOString(),
-          tipo_entidad: 'persona',
-          resumen: 'Yusmeidy Carolina Pérez Rondón (V-20194827)',
-          servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
-        },
-        {
-          id: 'sync-demo-003',
-          registro_id: '018e3a2b-7c45-7123-89ab-cdef01234569',
-          operacion: 'INSERT',
-          payload: {
-            id: '018e3a2b-7c45-7123-89ab-cdef01234569',
-            tipo: 'evento',
-            datos: {
-              titulo: 'Mega Jornada Deportiva y Prevención "Cero Violencia"',
-              fecha: '2026-09-18',
-              lugar: 'Polideportivo Parque Miranda, Sebucán'
-            }
-          },
-          hlc_timestamp: HybridLogicalClock.now(),
-          intentos: 1,
-          estado: 'sincronizado',
-          creado_en: new Date(now - 3600000).toISOString(),
-          hora_sincronizado: new Date(now - 3600000 * 0.95).toISOString(),
-          tipo_entidad: 'evento',
-          resumen: 'Mega Jornada Deportiva "Cero Violencia"',
-          servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
-        },
-        {
-          id: 'sync-demo-004',
-          registro_id: '018e3a2b-7c45-7123-89ab-cdef01234570',
-          operacion: 'INSERT',
-          payload: {
-            id: '018e3a2b-7c45-7123-89ab-cdef01234570',
-            tipo: 'persona',
-            datos: {
-              nombre: 'Alejandro Rafael',
-              apellido: 'Gómez Salazar',
-              cedula: 'V-24589102',
-              telefono: '+58 424 9876543',
-              programa: 'Atletas Juveniles de Alto Rendimiento',
-              rol_comunitario: 'Atleta de Judo'
-            }
-          },
-          hlc_timestamp: HybridLogicalClock.now(),
-          intentos: 0,
-          estado: 'pendiente',
-          creado_en: new Date().toISOString(),
-          tipo_entidad: 'persona',
-          resumen: 'Alejandro Rafael Gómez Salazar (V-24589102)',
-          servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.COLA_SYNC, JSON.stringify(demoQueue));
+      const rawReg = localStorage.getItem(STORAGE_KEYS.REGISTROS);
+      if (rawReg) {
+        const filtered = JSON.parse(rawReg).filter((r: any) => !LEGACY_DEMO_REGISTRO_IDS.includes(r.id) && !isGhost(r));
+        localStorage.setItem(STORAGE_KEYS.REGISTROS, JSON.stringify(filtered));
+      }
+      const rawSync = localStorage.getItem(STORAGE_KEYS.COLA_SYNC);
+      if (rawSync) {
+        const filtered = JSON.parse(rawSync).filter((q: any) => !LEGACY_DEMO_SYNC_IDS.includes(q.id) && !isGhost(q));
+        localStorage.setItem(STORAGE_KEYS.COLA_SYNC, JSON.stringify(filtered));
+      }
+      const rawPagos = localStorage.getItem(STORAGE_KEYS.PAGOS);
+      if (rawPagos) {
+        const filtered = JSON.parse(rawPagos).filter((p: any) => !LEGACY_DEMO_PAGO_IDS.includes(p.id) && !isGhost(p));
+        localStorage.setItem(STORAGE_KEYS.PAGOS, JSON.stringify(filtered));
+      }
+      const rawAsist = localStorage.getItem(STORAGE_KEYS.ASISTENCIAS);
+      if (rawAsist) {
+        const filtered = JSON.parse(rawAsist).filter((a: any) => !LEGACY_DEMO_ASIST_IDS.includes(a.id) && !isGhost(a));
+        localStorage.setItem(STORAGE_KEYS.ASISTENCIAS, JSON.stringify(filtered));
+      }
+      const rawBikes = localStorage.getItem(STORAGE_KEYS.SPINNING_BIKES);
+      if (rawBikes) {
+        const bikes = JSON.parse(rawBikes).map((b: any) => {
+          if (isGhost(b)) {
+            return {
+              id: b.id,
+              fila: b.fila,
+              numero: b.numero,
+              estado: 'Disponible'
+            };
+          }
+          return b;
+        });
+        localStorage.setItem(STORAGE_KEYS.SPINNING_BIKES, JSON.stringify(bikes));
+      }
+    } catch {
+      // Ignorar error de parse, no interrumpir arranque
     }
+  }
 
+  /**
+   * Inicializa la configuración de la aplicación al arrancar.
+   * NO crea ningún dato de personas, eventos ni pagos — todo viene del servidor.
+   * Solo inicializa: configuración de red y recursos operativos del gimnasio.
+   */
+  static inicializarApp() {
+    // 1. Limpiar datos demo legacy de versiones anteriores
+    this.limpiarDemosLegacy();
+
+    // 2. Inicializar configuración de red si no existe
     if (!localStorage.getItem(STORAGE_KEYS.CONFIG)) {
       localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(DEFAULT_CONFIG));
+    } else {
+      // Migración automática: URL legacy → nuevo servidor
+      const cfg = this.obtenerConfig();
+      if (cfg.supabase_url && cfg.supabase_url.includes('oxliwrrrmefuisuzdtpr')) {
+        this.guardarConfig({
+          supabase_url: DEFAULT_CONFIG.supabase_url,
+          supabase_anon_key: DEFAULT_CONFIG.supabase_anon_key
+        });
+      }
     }
 
+    // 3. Inicializar recursos operativos del gimnasio (infraestructura, sin usuarios fantasma)
     this.inicializarGranBasePaz();
   }
 
-  // Inicialización de datos específicos del Gimnasio Vertical / Gran Base de Paz
+  // Inicialización de datos específicos del Gimnasio Vertical / Gran Base de Paz (recursos físicos limpios)
   static inicializarGranBasePaz() {
-    // 1. Inicializar 20 Bicicletas de Spinning (según distribución oficial del Excel)
+    // 1. Inicializar 20 Bicicletas de Spinning 100% disponibles (sin preasignaciones fantasma)
     if (!localStorage.getItem(STORAGE_KEYS.SPINNING_BIKES)) {
       const bicis: BicicletaSpinning[] = [
         // Fila A (Frente - 4 bicis)
-        { id: 'Bici A-1', fila: 'Fila A (Frente)', numero: 1, estado: 'Ocupada', usuario_id: 'USUARIO-001', usuario_nombre: 'Carlos Eduardo Mendoza', usuario_cedula: 'V-18452391', hora_asignada: '09:15 AM' },
+        { id: 'Bici A-1', fila: 'Fila A (Frente)', numero: 1, estado: 'Disponible' },
         { id: 'Bici A-2', fila: 'Fila A (Frente)', numero: 2, estado: 'Disponible' },
         { id: 'Bici A-3', fila: 'Fila A (Frente)', numero: 3, estado: 'Disponible' },
-        { id: 'Bici A-4', fila: 'Fila A (Frente)', numero: 4, estado: 'Ocupada', usuario_id: 'USUARIO-002', usuario_nombre: 'Yusmeidy Carolina Pérez', usuario_cedula: 'V-20194827', hora_asignada: '09:20 AM' },
+        { id: 'Bici A-4', fila: 'Fila A (Frente)', numero: 4, estado: 'Disponible' },
         // Fila B (6 bicis)
         { id: 'Bici B-1', fila: 'Fila B', numero: 5, estado: 'Disponible' },
         { id: 'Bici B-2', fila: 'Fila B', numero: 6, estado: 'Disponible' },
@@ -314,7 +208,7 @@ export class StorageService {
       localStorage.setItem(STORAGE_KEYS.SPINNING_BIKES, JSON.stringify(bicis));
     }
 
-    // 2. Horarios por Pisos (Matriz exacta del Excel: Funcionamiento General)
+    // 2. Horarios por Pisos (Matriz del Excel: Funcionamiento General)
     if (!localStorage.getItem(STORAGE_KEYS.HORARIOS_PISOS)) {
       const horarios: HorarioPisoItem[] = [
         { id: 'h-1', horario: '07:00 - 08:00', turno: 'Mañana', piso2_crossfit: 'Mantenimiento', piso2_musculacion: 'Ocupado', piso2_spinning: 'Ocupado', piso3_artes_marciales: 'Ocupado', piso4_yoga_danza: 'Ocupado', piso5_cancha: 'Ocupado' },
@@ -337,80 +231,26 @@ export class StorageService {
     // 3. Programación de Clases
     if (!localStorage.getItem(STORAGE_KEYS.CLASES)) {
       const clases: ClaseProgramada[] = [
-        { id: 'c-1', dia: 'Lunes a Viernes', hora: '08:00 - 09:30', disciplina: 'Crossfit / Funcional', instructor: 'Prof. Marcos Gómez', cupos_totales: 25, cupos_inscritos: 18, piso: 'Piso 2' },
-        { id: 'c-2', dia: 'Lunes a Sábado', hora: '09:00 - 10:00', disciplina: 'Spinning / Ciclismo Indoor', instructor: 'Prof. Roberto Díaz', cupos_totales: 20, cupos_inscritos: 14, piso: 'Piso 2' },
-        { id: 'c-3', dia: 'Lunes a Sábado', hora: '10:00 - 11:30', disciplina: 'Musculación / Pesas', instructor: 'Prof. Yasmín Silva', cupos_totales: 30, cupos_inscritos: 22, piso: 'Piso 2' },
-        { id: 'c-4', dia: 'Lunes a Viernes', hora: '15:00 - 16:30', disciplina: 'Boxeo y Kickboxing', instructor: 'Prof. Alexis Lugo', cupos_totales: 20, cupos_inscritos: 15, piso: 'Piso 3' },
-        { id: 'c-5', dia: 'Martes y Jueves', hora: '16:30 - 18:00', disciplina: 'Karate-Do y Taekwondo', instructor: 'Sensei David Castro', cupos_totales: 25, cupos_inscritos: 19, piso: 'Piso 3' },
-        { id: 'c-6', dia: 'Lunes, Miércoles y Viernes', hora: '08:00 - 09:00', disciplina: 'Yoga y Flexibilidad', instructor: 'Prof. Elena Martínez', cupos_totales: 20, cupos_inscritos: 12, piso: 'Piso 4' },
-        { id: 'c-7', dia: 'Lunes a Viernes', hora: '17:00 - 18:30', disciplina: 'Danza y Baile Libre', instructor: 'Prof. Carmen Rivas', cupos_totales: 30, cupos_inscritos: 26, piso: 'Piso 4' },
-        { id: 'c-8', dia: 'Lunes a Sábado', hora: '16:00 - 18:00', disciplina: 'Fútbol Sala y Baloncesto', instructor: 'Prof. Javier Torres', cupos_totales: 25, cupos_inscritos: 20, piso: 'Piso 5' }
+        { id: 'c-1', dia: 'Lunes a Viernes', hora: '08:00 - 09:30', disciplina: 'Crossfit / Funcional', instructor: 'Prof. Marcos Gómez', cupos_totales: 25, cupos_inscritos: 0, piso: 'Piso 2' },
+        { id: 'c-2', dia: 'Lunes a Sábado', hora: '09:00 - 10:00', disciplina: 'Spinning / Ciclismo Indoor', instructor: 'Prof. Roberto Díaz', cupos_totales: 20, cupos_inscritos: 0, piso: 'Piso 2' },
+        { id: 'c-3', dia: 'Lunes a Sábado', hora: '10:00 - 11:30', disciplina: 'Musculación / Pesas', instructor: 'Prof. Yasmín Silva', cupos_totales: 30, cupos_inscritos: 0, piso: 'Piso 2' },
+        { id: 'c-4', dia: 'Lunes a Viernes', hora: '15:00 - 16:30', disciplina: 'Boxeo y Kickboxing', instructor: 'Prof. Alexis Lugo', cupos_totales: 20, cupos_inscritos: 0, piso: 'Piso 3' },
+        { id: 'c-5', dia: 'Martes y Jueves', hora: '16:30 - 18:00', disciplina: 'Karate-Do y Taekwondo', instructor: 'Sensei David Castro', cupos_totales: 25, cupos_inscritos: 0, piso: 'Piso 3' },
+        { id: 'c-6', dia: 'Lunes, Miércoles y Viernes', hora: '08:00 - 09:00', disciplina: 'Yoga y Flexibilidad', instructor: 'Prof. Elena Martínez', cupos_totales: 20, cupos_inscritos: 0, piso: 'Piso 4' },
+        { id: 'c-7', dia: 'Lunes a Viernes', hora: '17:00 - 18:30', disciplina: 'Danza y Baile Libre', instructor: 'Prof. Carmen Rivas', cupos_totales: 30, cupos_inscritos: 0, piso: 'Piso 4' },
+        { id: 'c-8', dia: 'Lunes a Sábado', hora: '16:00 - 18:00', disciplina: 'Fútbol Sala y Baloncesto', instructor: 'Prof. Javier Torres', cupos_totales: 25, cupos_inscritos: 0, piso: 'Piso 5' }
       ];
       localStorage.setItem(STORAGE_KEYS.CLASES, JSON.stringify(clases));
     }
 
-    // 4. Control de Pagos Iniciales
+    // 4. Control de Pagos: Inicia completamente vacío, sin pagos fantasmas
     if (!localStorage.getItem(STORAGE_KEYS.PAGOS)) {
-      const pagos: PagoRegistro[] = [
-        {
-          id: 'pago-001',
-          usuario_id: 'USUARIO-001',
-          usuario_nombre: 'Carlos Eduardo Mendoza',
-          usuario_cedula: 'V-18452391',
-          fecha_pago: new Date().toISOString().split('T')[0],
-          plan: 'Mensual',
-          servicio: 'Servicio de Crossfit',
-          monto_bs: 1850.00,
-          metodo_pago: 'Punto de Venta',
-          referencia: 'PV-839210',
-          estado: 'Solvente',
-          observaciones: 'Pago correspondiente al mes en curso.',
-          creado_en: new Date().toISOString()
-        },
-        {
-          id: 'pago-002',
-          usuario_id: 'USUARIO-002',
-          usuario_nombre: 'Yusmeidy Carolina Pérez',
-          usuario_cedula: 'V-20194827',
-          fecha_pago: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
-          plan: 'Inscripción + Mensualidad',
-          servicio: 'Servicio de Spinning',
-          monto_bs: 2400.00,
-          metodo_pago: 'Pago Móvil',
-          referencia: 'PM-194029',
-          estado: 'Solvente',
-          observaciones: 'Inscripción inicial y primer mes.',
-          creado_en: new Date(Date.now() - 86400000 * 2).toISOString()
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.PAGOS, JSON.stringify(pagos));
+      localStorage.setItem(STORAGE_KEYS.PAGOS, JSON.stringify([]));
     }
 
-    // 5. Asistencias de Ejemplo
+    // 5. Asistencias: Inicia completamente vacío, sin asistencias fantasmas
     if (!localStorage.getItem(STORAGE_KEYS.ASISTENCIAS)) {
-      const asistencias: AsistenciaRegistro[] = [
-        {
-          id: 'asist-001',
-          usuario_id: 'USUARIO-001',
-          usuario_nombre: 'Carlos Eduardo Mendoza',
-          usuario_cedula: 'V-18452391',
-          disciplina: 'Crossfit / Funcional',
-          fecha: new Date().toISOString().split('T')[0],
-          hora_entrada: '08:30 AM',
-          estado: 'Activo'
-        },
-        {
-          id: 'asist-002',
-          usuario_id: 'USUARIO-002',
-          usuario_nombre: 'Yusmeidy Carolina Pérez',
-          usuario_cedula: 'V-20194827',
-          disciplina: 'Spinning / Ciclismo',
-          fecha: new Date().toISOString().split('T')[0],
-          hora_entrada: '09:00 AM',
-          estado: 'Activo'
-        }
-      ];
-      localStorage.setItem(STORAGE_KEYS.ASISTENCIAS, JSON.stringify(asistencias));
+      localStorage.setItem(STORAGE_KEYS.ASISTENCIAS, JSON.stringify([]));
     }
   }
 
@@ -495,7 +335,7 @@ export class StorageService {
       creado_en: now,
       tipo_entidad: finalRegistro.tipo,
       resumen: resumenTexto,
-      servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+      servidor_destino: 'Supabase Cloud (jrjkuzjpabfaburppgtb.supabase.co)'
     });
 
     // Si está en línea y auto_sync está activo, sincronizar en segundo plano
@@ -545,7 +385,7 @@ export class StorageService {
       creado_en: new Date().toISOString(),
       tipo_entidad: target.tipo,
       resumen: `Eliminar ${target.tipo} #${id.slice(0, 8)}`,
-      servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+      servidor_destino: 'Supabase Cloud (jrjkuzjpabfaburppgtb.supabase.co)'
     });
 
     if (config.modo_red === 'online' && config.auto_sync) {
@@ -918,7 +758,7 @@ export class StorageService {
           creado_en: p.creado_en || new Date().toISOString(),
           tipo_entidad: 'pago',
           resumen: `Pago Bs. ${Number(p.monto_bs || 0).toFixed(2)} - ${p.usuario_nombre}`,
-          servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+          servidor_destino: 'Supabase Cloud (jrjkuzjpabfaburppgtb.supabase.co)'
         });
         idsEnCola.add(p.id);
         nuevosEncolados = true;
@@ -939,7 +779,7 @@ export class StorageService {
           creado_en: a.fecha || new Date().toISOString(),
           tipo_entidad: 'asistencia',
           resumen: `Asistencia - ${a.usuario_nombre} (${a.disciplina})`,
-          servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+          servidor_destino: 'Supabase Cloud (jrjkuzjpabfaburppgtb.supabase.co)'
         });
         idsEnCola.add(a.id);
         nuevosEncolados = true;
@@ -1008,7 +848,7 @@ export class StorageService {
 
       item.tipo_entidad = item.tipo_entidad || reg?.tipo || 'registro';
       item.resumen = resumenTexto;
-      item.servidor_destino = 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)';
+      item.servidor_destino = 'Supabase Cloud (jrjkuzjpabfaburppgtb.supabase.co)';
 
       const syncResult = await SupabaseService.syncRegistro(item);
 
@@ -1185,7 +1025,18 @@ export class StorageService {
   // Configuración de red y Supabase
   static obtenerConfig(): AppConfig {
     const raw = localStorage.getItem(STORAGE_KEYS.CONFIG);
-    return raw ? JSON.parse(raw) : DEFAULT_CONFIG;
+    if (!raw) return DEFAULT_CONFIG;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.supabase_url && parsed.supabase_url.includes('oxliwrrrmefuisuzdtpr')) {
+        parsed.supabase_url = DEFAULT_CONFIG.supabase_url;
+        parsed.supabase_anon_key = DEFAULT_CONFIG.supabase_anon_key;
+        localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(parsed));
+      }
+      return { ...DEFAULT_CONFIG, ...parsed };
+    } catch {
+      return DEFAULT_CONFIG;
+    }
   }
 
   static guardarConfig(config: Partial<AppConfig>) {
@@ -1208,7 +1059,18 @@ export class StorageService {
   }
 
   static cerrarSesion() {
+    // Eliminar sesión del usuario
     localStorage.removeItem(STORAGE_KEYS.SESION);
+    // Limpiar caché de datos del servidor (se volverán a descargar al iniciar sesión)
+    localStorage.removeItem(STORAGE_KEYS.REGISTROS);
+    localStorage.removeItem(STORAGE_KEYS.COLA_SYNC);
+    localStorage.removeItem(STORAGE_KEYS.AUDIT_LOG);
+    localStorage.removeItem(STORAGE_KEYS.PAGOS);
+    localStorage.removeItem(STORAGE_KEYS.ASISTENCIAS);
+    // Tokens de autenticación Supabase
+    localStorage.removeItem('mpv_supabase_auth_token');
+    localStorage.removeItem('mpv_supabase_refresh_token');
+    localStorage.removeItem('mpv_supabase_user_id');
     window.dispatchEvent(new CustomEvent('mpv-session-updated'));
   }
 
@@ -1453,7 +1315,7 @@ export class StorageService {
       creado_en: now,
       tipo_entidad: 'pago',
       resumen: `Pago Bs. ${nuevoPago.monto_bs.toFixed(2)} - ${nuevoPago.usuario_nombre}`,
-      servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+      servidor_destino: 'Supabase Cloud (jrjkuzjpabfaburppgtb.supabase.co)'
     });
 
     // Si el pago es solvente, actualizar el estado de solvencia de la persona en la base de datos
@@ -1522,7 +1384,7 @@ export class StorageService {
       creado_en: new Date().toISOString(),
       tipo_entidad: 'pago',
       resumen: `Eliminar Pago Bs. ${Number(target.monto_bs || 0).toFixed(2)} - ${target.usuario_nombre}`,
-      servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+      servidor_destino: 'Supabase Cloud (jrjkuzjpabfaburppgtb.supabase.co)'
     });
 
     this.registrarAuditoria({
@@ -1662,7 +1524,8 @@ export class StorageService {
     const ubicacion = {
       estado: sesion?.estado_asignado || 'Distrito Capital',
       municipio: sesion?.municipio_asignado || 'Libertador',
-      parroquia: sesion?.parroquia_asignada || 'Sucre (Catia)'
+      parroquia: sesion?.parroquia_asignada || 'Sucre (Catia)',
+      comunidad: sesion?.base_misiones_nombre || ''
     };
 
     const nuevaAsistencia: AsistenciaRegistro = {
@@ -1694,7 +1557,7 @@ export class StorageService {
       creado_en: now.toISOString(),
       tipo_entidad: 'asistencia',
       resumen: `Asistencia - ${usuario.nombre} (${nuevaAsistencia.disciplina})`,
-      servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+      servidor_destino: 'Supabase Cloud (jrjkuzjpabfaburppgtb.supabase.co)'
     });
 
     this.registrarAuditoria({
@@ -1751,7 +1614,7 @@ export class StorageService {
       creado_en: now.toISOString(),
       tipo_entidad: 'asistencia',
       resumen: `Asistencia - ${nueva.usuario_nombre} (${nueva.disciplina})`,
-      servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+      servidor_destino: 'Supabase Cloud (jrjkuzjpabfaburppgtb.supabase.co)'
     });
 
     window.dispatchEvent(new CustomEvent('mpv-asistencia-updated'));
@@ -1783,7 +1646,7 @@ export class StorageService {
       creado_en: now.toISOString(),
       tipo_entidad: 'asistencia',
       resumen: `Salida - ${target.usuario_nombre}`,
-      servidor_destino: 'Supabase Cloud (oxliwrrrmefuisuzdtpr.supabase.co)'
+      servidor_destino: 'Supabase Cloud (jrjkuzjpabfaburppgtb.supabase.co)'
     });
 
     this.registrarAuditoria({

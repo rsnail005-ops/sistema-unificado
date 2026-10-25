@@ -113,7 +113,7 @@ button { -webkit-app-region: no-drag !important; pointer-events: auto !important
   justify-content: space-between;
   padding: 0 24px;
   z-index: 50;
-  -webkit-app-region: drag; /* Allows moving the desktop window */
+  /* -webkit-app-region: drag removido — bloqueaba inputs en pantallas 1200×720 */
 }
 
 .no-drag {
@@ -627,3 +627,43 @@ input[type="radio"] {
 }
 
 
+/* ── Responsive: pantallas compactas ≤ 1280×768 (ej. 1200×720) ─────────── */
+@media (max-width: 1280px), (max-height: 768px) {
+  /* Asegura que inputs NUNCA sean bloqueados por hit-regions */
+  input,
+  textarea,
+  select,
+  [contenteditable],
+  button,
+  a {
+    -webkit-app-region: no-drag !important;
+    pointer-events: auto !important;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header más compacto */
+  .desktop-header {
+    height: 54px;
+    padding: 0 16px;
+  }
+  .brand-title { font-size: 14px; }
+  .brand-subtitle { font-size: 10px; }
+
+  /* Sidebar más angosto */
+  .sidebar { width: 200px !important; min-width: 180px !important; }
+
+  /* Tablas: fuente y padding más pequeños */
+  .data-table th,
+  .data-table td {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+  }
+
+  /* Modales: asegurar visibilidad completa */
+  .modal-content,
+  .gym-modal-box {
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+}

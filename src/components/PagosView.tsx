@@ -27,7 +27,9 @@ import {
   MetodoPago, 
   EstadoMembresia,
   obtenerEstadoMembresia,
-  Registro
+  Registro,
+  isAdministradorBase,
+  puedeVerNacional
 } from '../types';
 
 interface PagosViewProps {
@@ -107,15 +109,37 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
   // Cálculo de estado para la fecha seleccionada en el formulario
   const estadoCalculadoFormulario: EstadoMembresia = obtenerEstadoMembresia(undefined, formFechaVencimiento);
 
+  // Aislamiento de datos según rol
+  const esAdminBase = isAdministradorBase(sesion);
+  const baseAsignada = (sesion.base_misiones_nombre || '').trim();
+
+  // Filtrar personas según alcance del rol
+  const personasAlcance = personas.filter(p => {
+    if (!esAdminBase || !baseAsignada) return true;
+    const baseP = (p.datos?.base_misiones || p.ubicacion?.comunidad || '').toLowerCase();
+    return baseP.includes(baseAsignada.toLowerCase());
+  });
+
+  const cedulasBaseSet = new Set(personasAlcance.map(p => (p.datos?.cedula || '').trim().toUpperCase()));
+
+  // Filtrar pagos según alcance del rol
+  const pagosAlcance = pagos.filter(p => {
+    if (!esAdminBase || !baseAsignada) return true;
+    if (p.usuario_cedula && cedulasBaseSet.has(p.usuario_cedula.trim().toUpperCase())) return true;
+    if (p.registrado_por && p.registrado_por.toUpperCase() === sesion.cedula.toUpperCase()) return true;
+    const basePago = (p.ubicacion?.comunidad || '').toLowerCase();
+    return basePago.includes(baseAsignada.toLowerCase());
+  });
+
   // Métricas financieras y de membresía
-  const totalRecaudado = pagos.reduce((acc, p) => acc + Number(p.monto_bs || 0), 0);
+  const totalRecaudado = pagosAlcance.reduce((acc, p) => acc + Number(p.monto_bs || 0), 0);
 
   // Contadores exactos de los 3 estados solicitados: Activo, Próximo a Vencer, Vencido
   let activosCount = 0;
   let proximosCount = 0;
   let vencidosCount = 0;
 
-  personas.forEach(p => {
+  personasAlcance.forEach(p => {
     const est = obtenerEstadoMembresia(p.datos.estado_solvencia, p.datos.fecha_vencimiento);
     if (est === 'Activo') activosCount++;
     else if (est === 'Próximo a Vencer') proximosCount++;
@@ -166,6 +190,12 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
       metodo_pago: formMetodo,
       referencia: formReferencia || `REF-${Math.floor(100000 + Math.random() * 900000)}`,
       estado: estadoFinal,
+      ubicacion: {
+        estado: sesion.estado_asignado || 'Distrito Capital',
+        municipio: sesion.municipio_asignado || 'Libertador',
+        parroquia: sesion.parroquia_asignada || 'Sucre',
+        comunidad: sesion.base_misiones_nombre || ''
+      },
       observaciones: formObs
     }, sesion.cedula);
 
@@ -178,7 +208,7 @@ export const PagosView: React.FC<PagosViewProps> = ({ sesion }) => {
   };
 
   // Filtrado de pagos
-  const pagosFiltrados = pagos.filter(p => {
+  const pagosFiltrados = pagosAlcance.filter(p => {
     const estadoPago = obtenerEstadoMembresia(p.estado, p.fecha_vencimiento);
     if (filtroEstado !== 'TODOS' && estadoPago !== filtroEstado) return false;
     if (searchTerm) {

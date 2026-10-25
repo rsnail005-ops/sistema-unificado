@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { LOGO_OFICIAL, LOGO_JUNTOS_PAZ_VIDA } from '../assets/logos';
-import { UsuarioSesion, isDeveloperSesion } from '../types';
+import { UsuarioSesion, puedeModificarPrograma, isAdministradorBase } from '../types';
 
 export type TabType = 
   | 'dashboard' 
@@ -26,7 +26,8 @@ export type TabType =
   | 'documentos' 
   | 'sync' 
   | 'importador'
-  | 'developer';
+  | 'developer'
+  | 'mi-base';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -110,8 +111,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, sesio
         <span>Eventos y Jornadas</span>
       </div>
 
+      {/* ─── Mi Base — solo para administrador_base ─── */}
+      {isAdministradorBase(sesion) && (
+        <div
+          className={`nav-item ${activeTab === 'mi-base' ? 'active' : ''}`}
+          onClick={() => setActiveTab('mi-base')}
+          style={activeTab === 'mi-base' ? {
+            background: 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(5,150,105,0.1))',
+            borderLeft: '3px solid #10b981',
+          } : { borderLeft: '3px solid transparent' }}
+        >
+          <Building2 size={18} style={{ color: '#10b981' }} />
+          <span style={{ color: activeTab === 'mi-base' ? '#34d399' : '#e2e8f0', fontWeight: 600 }}>Mi Base</span>
+        </div>
+      )}
+
       {/* ─── Panel Desarrollador en lugar de Documentos Oficiales — solo para desarrolladores ─── */}
-      {isDeveloperSesion(sesion) && (
+      {puedeModificarPrograma(sesion) && (
         <div
           className={`nav-item ${activeTab === 'developer' ? 'active' : ''}`}
           onClick={() => setActiveTab('developer')}
